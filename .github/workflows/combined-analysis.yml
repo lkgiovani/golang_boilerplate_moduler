@@ -87,8 +87,10 @@ jobs:
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
+        env:
+          GOLANGCI_LINT_SKIP_GO_VERSION_CHECK: 1
         with:
-          version: latest
+          version: latest 
           args: --timeout 5m
 
   Test-Unit:
