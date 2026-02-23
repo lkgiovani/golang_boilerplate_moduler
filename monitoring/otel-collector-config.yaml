@@ -1,0 +1,55 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  resource/remove-noise:
+    attributes:
+      - pattern: ^process\.
+        action: delete
+      - pattern: ^host\.
+        action: delete
+      - pattern: ^os\.
+        action: delete
+
+  transform/remove-scope:
+    log_statements:
+      - context: scope
+        statements:
+          - set(name, "")
+
+  batch:
+
+exporters:
+  otlp_http/tempo:
+    endpoint: http://tempo:4318
+
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource/remove-noise, batch]
+      exporters: [otlp_http/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [resource/remove-noise, batch]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      processors: [resource/remove-noise, transform/remove-scope, batch]
+      exporters: [otlp_http/loki]

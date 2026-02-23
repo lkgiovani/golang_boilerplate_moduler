@@ -1,0 +1,24 @@
+commit-msg:
+  jobs:
+    - name: conventional-commit
+      run: bash .githooks/commit-msg.sh {1}
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: go-fmt
+      glob: "*.go"
+      run: gofmt -l -w {staged_files}
+      stage_fixed: true
+
+    - name: go-vet
+      run: go vet ./...
+
+    - name: golangci-lint
+      run: golangci-lint run --fix --timeout 5m
+      stage_fixed: true
+
+pre-push:
+  jobs:
+    - name: branch-naming
+      run: bash .githooks/pre-push.sh
