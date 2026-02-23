@@ -13,11 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Module bundles all shared infrastructure providers:
-// - Config
-// - Logger (ZapLoggerProvider bound to LoggerProvider interface)
-// - Database (*gorm.DB)
-// - OpenTelemetry lifecycle (setup on start, shutdown on stop)
 var Module = fx.Module("shared",
 	fx.Provide(
 		persistence.NewDB,

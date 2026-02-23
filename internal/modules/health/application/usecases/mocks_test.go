@@ -6,8 +6,6 @@ import (
 	"golang_boilerplate_module/internal/shared/domain/providers"
 )
 
-// ── HealthRepository mock ─────────────────────────────────────────────────────
-
 type mockHealthRepo struct {
 	pingFn func(ctx context.Context) (bool, error)
 }
@@ -18,8 +16,6 @@ func (m *mockHealthRepo) Ping(ctx context.Context) (bool, error) {
 	}
 	return true, nil
 }
-
-// ── LoggerProvider mock ───────────────────────────────────────────────────────
 
 type mockLogger struct{}
 

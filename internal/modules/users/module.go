@@ -8,7 +8,6 @@ import (
 	"go.uber.org/fx"
 )
 
-// Module is the fx dependency injection bundle for the users domain.
 var Module = fx.Module("users",
 	fx.Provide(
 		userspersistence.NewGORMUserRepository,

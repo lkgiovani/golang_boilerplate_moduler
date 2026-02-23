@@ -16,7 +16,6 @@ import (
 
 var tracer = otel.Tracer("users.http")
 
-// UserController handles user-related HTTP requests.
 type UserController struct {
 	createUser *usecases.CreateUserUseCase
 	getUser    *usecases.GetUserUseCase
@@ -35,7 +34,6 @@ func NewUserController(
 	}
 }
 
-// Create handles POST /api/users
 func (ctrl *UserController) Create(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "UserController.Create")
 	defer span.End()
@@ -60,7 +58,6 @@ func (ctrl *UserController) Create(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(output)
 }
 
-// GetByID handles GET /api/users/:id
 func (ctrl *UserController) GetByID(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "UserController.GetByID")
 	defer span.End()

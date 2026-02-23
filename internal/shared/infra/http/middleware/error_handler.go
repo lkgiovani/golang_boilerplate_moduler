@@ -30,14 +30,12 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-// NewErrorHandler returns a Fiber-compatible ErrorHandler closure.
-// Equivalent to errorHandler.ts in the TypeScript project.
 func NewErrorHandler(rootLogger providers.LoggerProvider) fiber.ErrorHandler {
 	return func(c *fiber.Ctx, err error) error {
 		var domainErr *exceptions.DomainError
 
 		if !errors.As(err, &domainErr) {
-			// Try Fiber's own error type (e.g. 404 from routing)
+
 			var fiberErr *fiber.Error
 			if errors.As(err, &fiberErr) {
 				if fiberErr.Code == fiber.StatusNotFound {

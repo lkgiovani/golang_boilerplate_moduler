@@ -8,8 +8,6 @@ import (
 	"go.uber.org/fx"
 )
 
-// Module is the fx dependency injection bundle for the health domain.
-// Equivalent to modules/health/container.ts in the TypeScript project.
 var Module = fx.Module("health",
 	fx.Provide(
 		healthpersistence.NewGORMHealthRepository,

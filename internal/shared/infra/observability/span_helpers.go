@@ -12,8 +12,6 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-// domainToHTTPStatus maps exception codes to HTTP status codes —
-// mirrors the same mapping used by the error handler middleware.
 var domainToHTTPStatus = map[exceptions.ExceptionCode]int{
 	exceptions.CodeBadRequest:         400,
 	exceptions.CodeUnauthorized:       401,
@@ -24,12 +22,6 @@ var domainToHTTPStatus = map[exceptions.ExceptionCode]int{
 	exceptions.CodeServiceUnavailable: 503,
 }
 
-// RecordError annotates the span with:
-//   - http.response.status_code  (derived from DomainError.Code)
-//   - error.type                 (the ExceptionCode string, e.g. "UNPROCESSABLE")
-//   - span status = Error with the error message
-//
-// Works with any error; falls back to 500 for non-domain errors.
 func RecordError(span oteltrace.Span, err error) {
 	if err == nil || !span.IsRecording() {
 		return
@@ -57,17 +49,6 @@ func RecordError(span oteltrace.Span, err error) {
 	}
 }
 
-// LoggerWithTrace enriches the given logger with traceId and spanId
-// extracted from the active OTel span in ctx.
-//
-// Call this at the top of every Execute() so that all log lines —
-// use cases, repositories — carry the same traceId visible in Tempo
-// and correlated in Loki. No interface change or context storage needed:
-// the span is already in ctx because the controller starts it first.
-//
-// Usage:
-//
-//	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "CreateUser")
 func LoggerWithTrace(ctx context.Context, logger providers.LoggerProvider) providers.LoggerProvider {
 	span := oteltrace.SpanFromContext(ctx)
 	if spanCtx := span.SpanContext(); spanCtx.IsValid() {

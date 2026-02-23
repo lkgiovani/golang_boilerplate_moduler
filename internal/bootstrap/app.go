@@ -19,14 +19,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// NewFiberApp creates and configures the Fiber application.
-// Applies middleware in order:
-//  1. CORS
-//  2. OTel spans (must be first among request-processing middlewares)
-//  3. HTTP metrics
-//  4. Request ID + logger correlation
-//
-// Equivalent to bootstrap.ts in the TypeScript project.
 func NewFiberApp(logger providers.LoggerProvider) *fiber.App {
 	app := fiber.New(fiber.Config{
 		ErrorHandler: middleware.NewErrorHandler(logger),
@@ -40,9 +32,6 @@ func NewFiberApp(logger providers.LoggerProvider) *fiber.App {
 	return app
 }
 
-// StartFiberApp registers the Fiber app lifecycle with fx.
-// OnStart: begins listening in a goroutine.
-// OnStop: graceful shutdown of HTTP server + DB + logger.
 func StartFiberApp(
 	lc fx.Lifecycle,
 	app *fiber.App,
@@ -75,8 +64,6 @@ func StartFiberApp(
 	})
 }
 
-// App is the root fx.Options that composes all modules.
-// Equivalent to bootstrap.ts + di/container.ts in the TypeScript project.
 var App = fx.Options(
 	fx.Provide(config.NewConfig),
 	fx.Provide(NewFiberApp),

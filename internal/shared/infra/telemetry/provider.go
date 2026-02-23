@@ -20,19 +20,11 @@ import (
 	otellog "go.opentelemetry.io/otel/log/global"
 )
 
-// ShutdownFunc flushes and shuts down all OTEL providers.
 type ShutdownFunc func(ctx context.Context) error
 
-// SetupOTel initializes the OpenTelemetry SDK with:
-// - OTLP trace exporter (HTTP/Protobuf)
-// - OTLP metric exporter (HTTP/Protobuf)
-// - OTLP log exporter (HTTP/Protobuf) → Loki via OTel Collector
-// - SpanEnricher custom processor
-// - Resource attributes (service.name, service.version, deployment.environment)
-// Returns a shutdown function to be called on app termination.
 func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 	if cfg.Otel.Endpoint == "" {
-		// OTEL not configured — return no-op shutdown
+		
 		return func(_ context.Context) error { return nil }, nil
 	}
 
@@ -49,7 +41,6 @@ func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 		return nil, fmt.Errorf("failed to create OTEL resource: %w", err)
 	}
 
-	// --- Traces ---
 	traceExporter, err := otlptracehttp.New(ctx,
 		otlptracehttp.WithEndpoint(cfg.Otel.Endpoint),
 		otlptracehttp.WithInsecure(),
@@ -70,7 +61,6 @@ func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 		propagation.Baggage{},
 	))
 
-	// --- Metrics ---
 	metricExporter, err := otlpmetrichttp.New(ctx,
 		otlpmetrichttp.WithEndpoint(cfg.Otel.Endpoint),
 		otlpmetrichttp.WithInsecure(),
@@ -85,7 +75,6 @@ func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 	)
 	otel.SetMeterProvider(mp)
 
-	// --- Logs (→ OTel Collector → Loki) ---
 	logExporter, err := otlploghttp.New(ctx,
 		otlploghttp.WithEndpoint(cfg.Otel.Endpoint),
 		otlploghttp.WithInsecure(),

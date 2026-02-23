@@ -12,7 +12,7 @@ import (
 
 func TestCreateUserUseCase_Success(t *testing.T) {
 	repo := &mockUserRepo{
-		// no existing user for this email
+
 		getByEmailFn: func(_ context.Context, _ string) (*domain.User, error) {
 			return nil, nil
 		},

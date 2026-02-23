@@ -7,8 +7,6 @@ import (
 	"golang_boilerplate_module/internal/shared/domain/providers"
 )
 
-// ── UserRepository mock ───────────────────────────────────────────────────────
-
 type mockUserRepo struct {
 	addFn        func(ctx context.Context, u *domain.User) (*domain.User, error)
 	getByIDFn    func(ctx context.Context, id uint) (*domain.User, error)
@@ -59,8 +57,6 @@ func (m *mockUserRepo) DeleteAll(ctx context.Context) error {
 	}
 	return nil
 }
-
-// ── LoggerProvider mock ───────────────────────────────────────────────────────
 
 type mockLogger struct{}
 

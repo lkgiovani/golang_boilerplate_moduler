@@ -1,5 +1,5 @@
 services:
-  # ─── Application ─────────────────────────────────────────────────────────────
+  
   api:
     build:
       context: .
@@ -24,7 +24,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # ─── Database ────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:17-alpine
     ports:
@@ -41,7 +40,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── Migrations ──────────────────────────────────────────────────────────────
   flyway:
     image: flyway/flyway:latest
     command: >
@@ -56,15 +54,14 @@ services:
       postgres:
         condition: service_healthy
 
-  # ─── Observability Stack ─────────────────────────────────────────────────────
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.146.0
     command: ["--config", "/etc/otelcol/config.yaml"]
     volumes:
       - ./monitoring/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+      - "4317:4317"   
+      - "4318:4318"   
     depends_on:
       - tempo
       - loki

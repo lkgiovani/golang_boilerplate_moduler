@@ -17,14 +17,11 @@ import (
 
 var dbTracer = otel.Tracer("users.persistence")
 
-// GORMUserRepository embeds GORMGenericRepository and adds user-specific queries.
 type GORMUserRepository struct {
 	*sharedrepo.GORMGenericRepository[domain.User, uint]
 	db *gorm.DB
 }
 
-// NewGORMUserRepository is the fx constructor.
-// Returns the UserRepository interface.
 func NewGORMUserRepository(db *gorm.DB) userrepo.UserRepository {
 	return &GORMUserRepository{
 		GORMGenericRepository: sharedrepo.NewGORMGenericRepository[domain.User, uint](db),

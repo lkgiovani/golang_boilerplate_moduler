@@ -10,8 +10,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// GetUserUseCase retrieves a user by ID.
-// Propagates NotFoundException from the repository if not found.
 type GetUserUseCase struct {
 	userRepo userrepo.UserRepository
 	logger   providers.LoggerProvider

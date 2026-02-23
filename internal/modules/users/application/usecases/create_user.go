@@ -26,7 +26,6 @@ type UserOutput struct {
 	Email string `json:"email"`
 }
 
-// CreateUserUseCase handles user creation with email uniqueness validation.
 type CreateUserUseCase struct {
 	userRepo userrepo.UserRepository
 	logger   providers.LoggerProvider
@@ -51,7 +50,6 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 		return UserOutput{}, err
 	}
 
-	// Check email uniqueness
 	existing, _ := uc.userRepo.GetByEmail(ctx, input.Email)
 	if existing != nil {
 		err := exceptions.NewUnprocessableException(

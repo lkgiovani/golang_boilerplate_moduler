@@ -2,8 +2,6 @@ package exceptions
 
 import "fmt"
 
-// DomainError is the base struct for all domain exceptions.
-// It implements the error interface.
 type DomainError struct {
 	Code       ExceptionCode
 	Message    string

@@ -17,8 +17,6 @@ type GORMHealthRepository struct {
 	db *gorm.DB
 }
 
-// NewGORMHealthRepository is the fx constructor.
-// Returns the HealthRepository interface, not the concrete type.
 func NewGORMHealthRepository(db *gorm.DB) healthrepo.HealthRepository {
 	return &GORMHealthRepository{db: db}
 }

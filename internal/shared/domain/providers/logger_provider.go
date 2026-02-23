@@ -1,6 +1,5 @@
 package providers
 
-// LoggerProvider is the domain-layer abstraction for structured logging.
 type LoggerProvider interface {
 	Info(msg string, fields ...any)
 	Warn(msg string, fields ...any)
