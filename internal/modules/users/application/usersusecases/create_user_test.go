@@ -1,29 +1,28 @@
-package usecases_test
+package usersusecases_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"golang_boilerplate_module/internal/modules/users/application/usecases"
-	"golang_boilerplate_module/internal/modules/users/domain"
+	"golang_boilerplate_module/internal/modules/users/application/usersusecases"
+	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 )
 
 func TestCreateUserUseCase_Success(t *testing.T) {
 	repo := &mockUserRepo{
-
-		getByEmailFn: func(_ context.Context, _ string) (*domain.User, error) {
+		getByEmailFn: func(_ context.Context, _ string) (*usersdomain.User, error) {
 			return nil, nil
 		},
-		addFn: func(_ context.Context, u *domain.User) (*domain.User, error) {
+		addFn: func(_ context.Context, u *usersdomain.User) (*usersdomain.User, error) {
 			u.ID = 1
 			return u, nil
 		},
 	}
 
-	uc := usecases.NewCreateUserUseCase(repo, &mockLogger{})
-	out, err := uc.Execute(context.Background(), usecases.CreateUserInput{
+	uc := usersusecases.NewCreateUserUseCase(repo, &mockLogger{})
+	out, err := uc.Execute(context.Background(), usersusecases.CreateUserInput{
 		Name:  "João Silva",
 		Email: "joao@example.com",
 	})
@@ -43,9 +42,9 @@ func TestCreateUserUseCase_Success(t *testing.T) {
 }
 
 func TestCreateUserUseCase_MissingName(t *testing.T) {
-	uc := usecases.NewCreateUserUseCase(&mockUserRepo{}, &mockLogger{})
+	uc := usersusecases.NewCreateUserUseCase(&mockUserRepo{}, &mockLogger{})
 
-	_, err := uc.Execute(context.Background(), usecases.CreateUserInput{
+	_, err := uc.Execute(context.Background(), usersusecases.CreateUserInput{
 		Name:  "",
 		Email: "joao@example.com",
 	})
@@ -64,9 +63,9 @@ func TestCreateUserUseCase_MissingName(t *testing.T) {
 }
 
 func TestCreateUserUseCase_MissingEmail(t *testing.T) {
-	uc := usecases.NewCreateUserUseCase(&mockUserRepo{}, &mockLogger{})
+	uc := usersusecases.NewCreateUserUseCase(&mockUserRepo{}, &mockLogger{})
 
-	_, err := uc.Execute(context.Background(), usecases.CreateUserInput{
+	_, err := uc.Execute(context.Background(), usersusecases.CreateUserInput{
 		Name:  "João",
 		Email: "",
 	})
@@ -85,16 +84,16 @@ func TestCreateUserUseCase_MissingEmail(t *testing.T) {
 }
 
 func TestCreateUserUseCase_DuplicateEmail(t *testing.T) {
-	existing := &domain.User{ID: 99, Name: "Outro", Email: "dup@example.com"}
+	existing := &usersdomain.User{ID: 99, Name: "Outro", Email: "dup@example.com"}
 
 	repo := &mockUserRepo{
-		getByEmailFn: func(_ context.Context, _ string) (*domain.User, error) {
+		getByEmailFn: func(_ context.Context, _ string) (*usersdomain.User, error) {
 			return existing, nil
 		},
 	}
 
-	uc := usecases.NewCreateUserUseCase(repo, &mockLogger{})
-	_, err := uc.Execute(context.Background(), usecases.CreateUserInput{
+	uc := usersusecases.NewCreateUserUseCase(repo, &mockLogger{})
+	_, err := uc.Execute(context.Background(), usersusecases.CreateUserInput{
 		Name:  "Novo",
 		Email: "dup@example.com",
 	})
@@ -116,16 +115,16 @@ func TestCreateUserUseCase_RepositoryError(t *testing.T) {
 	repoErr := errors.New("connection reset")
 
 	repo := &mockUserRepo{
-		getByEmailFn: func(_ context.Context, _ string) (*domain.User, error) {
+		getByEmailFn: func(_ context.Context, _ string) (*usersdomain.User, error) {
 			return nil, nil
 		},
-		addFn: func(_ context.Context, _ *domain.User) (*domain.User, error) {
+		addFn: func(_ context.Context, _ *usersdomain.User) (*usersdomain.User, error) {
 			return nil, repoErr
 		},
 	}
 
-	uc := usecases.NewCreateUserUseCase(repo, &mockLogger{})
-	_, err := uc.Execute(context.Background(), usecases.CreateUserInput{
+	uc := usersusecases.NewCreateUserUseCase(repo, &mockLogger{})
+	_, err := uc.Execute(context.Background(), usersusecases.CreateUserInput{
 		Name:  "Teste",
 		Email: "teste@example.com",
 	})

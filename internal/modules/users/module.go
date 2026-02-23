@@ -1,9 +1,9 @@
 package users
 
 import (
-	"golang_boilerplate_module/internal/modules/users/application/usecases"
-	usershttp "golang_boilerplate_module/internal/modules/users/infra/http"
-	userspersistence "golang_boilerplate_module/internal/modules/users/infra/persistence"
+	"golang_boilerplate_module/internal/modules/users/application/usersusecases"
+	"golang_boilerplate_module/internal/modules/users/infra/usershttp"
+	"golang_boilerplate_module/internal/modules/users/infra/userspersistence"
 
 	"go.uber.org/fx"
 )
@@ -11,8 +11,8 @@ import (
 var Module = fx.Module("users",
 	fx.Provide(
 		userspersistence.NewGORMUserRepository,
-		usecases.NewCreateUserUseCase,
-		usecases.NewGetUserUseCase,
+		usersusecases.NewCreateUserUseCase,
+		usersusecases.NewGetUserUseCase,
 		usershttp.NewUserController,
 	),
 	fx.Invoke(usershttp.RegisterRoutes),

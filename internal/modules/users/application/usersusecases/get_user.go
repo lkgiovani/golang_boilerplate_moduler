@@ -1,9 +1,9 @@
-package usecases
+package usersusecases
 
 import (
 	"context"
 
-	userrepo "golang_boilerplate_module/internal/modules/users/domain/repositories"
+	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -11,11 +11,11 @@ import (
 )
 
 type GetUserUseCase struct {
-	userRepo userrepo.UserRepository
+	userRepo usersrepo.UserRepository
 	logger   providers.LoggerProvider
 }
 
-func NewGetUserUseCase(userRepo userrepo.UserRepository, logger providers.LoggerProvider) *GetUserUseCase {
+func NewGetUserUseCase(userRepo usersrepo.UserRepository, logger providers.LoggerProvider) *GetUserUseCase {
 	return &GetUserUseCase{userRepo: userRepo, logger: logger}
 }
 

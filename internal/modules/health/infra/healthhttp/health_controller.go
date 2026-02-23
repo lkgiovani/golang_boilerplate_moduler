@@ -1,7 +1,7 @@
-package http
+package healthhttp
 
 import (
-	"golang_boilerplate_module/internal/modules/health/application/usecases"
+	"golang_boilerplate_module/internal/modules/health/application/healthusecases"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/http/middleware"
 	"golang_boilerplate_module/internal/shared/infra/observability"
@@ -15,14 +15,14 @@ import (
 var tracer = otel.Tracer("health.http")
 
 type HealthController struct {
-	checkHealth    *usecases.CheckHealthUseCase
-	checkReadiness *usecases.CheckReadinessUseCase
+	checkHealth    *healthusecases.CheckHealthUseCase
+	checkReadiness *healthusecases.CheckReadinessUseCase
 	logger         providers.LoggerProvider
 }
 
 func NewHealthController(
-	checkHealth *usecases.CheckHealthUseCase,
-	checkReadiness *usecases.CheckReadinessUseCase,
+	checkHealth *healthusecases.CheckHealthUseCase,
+	checkReadiness *healthusecases.CheckReadinessUseCase,
 	logger providers.LoggerProvider,
 ) *HealthController {
 	return &HealthController{

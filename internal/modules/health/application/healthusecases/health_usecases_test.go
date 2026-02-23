@@ -1,20 +1,20 @@
-package usecases_test
+package healthusecases_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"golang_boilerplate_module/internal/modules/health/application/usecases"
-	"golang_boilerplate_module/internal/modules/health/domain"
+	"golang_boilerplate_module/internal/modules/health/application/healthusecases"
+	"golang_boilerplate_module/internal/modules/health/healthdomain"
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 )
 
 func TestCheckHealthUseCase_AlwaysHealthy(t *testing.T) {
-	uc := usecases.NewCheckHealthUseCase(&mockLogger{})
+	uc := healthusecases.NewCheckHealthUseCase(&mockLogger{})
 	out := uc.Execute(context.Background())
 
-	if out.Status != domain.HealthStatusHealthy {
+	if out.Status != healthdomain.HealthStatusHealthy {
 		t.Fatalf("expected status=healthy, got %q", out.Status)
 	}
 }
@@ -26,20 +26,20 @@ func TestCheckReadinessUseCase_DatabaseHealthy(t *testing.T) {
 		},
 	}
 
-	uc := usecases.NewCheckReadinessUseCase(repo, &mockLogger{})
+	uc := healthusecases.NewCheckReadinessUseCase(repo, &mockLogger{})
 	out, err := uc.Execute(context.Background())
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if out.Status != domain.HealthStatusHealthy {
+	if out.Status != healthdomain.HealthStatusHealthy {
 		t.Fatalf("expected status=healthy, got %q", out.Status)
 	}
 	db, ok := out.Components["database"]
 	if !ok {
 		t.Fatal("expected 'database' component in response")
 	}
-	if db.Status != domain.HealthStatusHealthy {
+	if db.Status != healthdomain.HealthStatusHealthy {
 		t.Fatalf("expected database status=healthy, got %q", db.Status)
 	}
 }
@@ -51,7 +51,7 @@ func TestCheckReadinessUseCase_DatabaseUnhealthy(t *testing.T) {
 		},
 	}
 
-	uc := usecases.NewCheckReadinessUseCase(repo, &mockLogger{})
+	uc := healthusecases.NewCheckReadinessUseCase(repo, &mockLogger{})
 	_, err := uc.Execute(context.Background())
 
 	if err == nil {
@@ -68,14 +68,13 @@ func TestCheckReadinessUseCase_DatabaseUnhealthy(t *testing.T) {
 }
 
 func TestCheckReadinessUseCase_DatabasePingFalse(t *testing.T) {
-
 	repo := &mockHealthRepo{
 		pingFn: func(_ context.Context) (bool, error) {
 			return false, nil
 		},
 	}
 
-	uc := usecases.NewCheckReadinessUseCase(repo, &mockLogger{})
+	uc := healthusecases.NewCheckReadinessUseCase(repo, &mockLogger{})
 	_, err := uc.Execute(context.Background())
 
 	if err == nil {

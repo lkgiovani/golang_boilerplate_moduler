@@ -18,8 +18,8 @@ tidy:
 
 test/unit:
 	go test -v -count=1 \
-		./internal/modules/users/application/usecases/... \
-		./internal/modules/health/application/usecases/...
+		./internal/modules/users/application/usersusecases/... \
+		./internal/modules/health/application/healthusecases/...
 
 test/integration:
 	go test -v -count=1 -timeout 120s ./internal/test/integration/...

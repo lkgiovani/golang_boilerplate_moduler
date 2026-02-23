@@ -1,10 +1,10 @@
-package usecases
+package healthusecases
 
 import (
 	"context"
 
-	"golang_boilerplate_module/internal/modules/health/domain"
-	healthrepo "golang_boilerplate_module/internal/modules/health/domain/repositories"
+	"golang_boilerplate_module/internal/modules/health/healthdomain"
+	"golang_boilerplate_module/internal/modules/health/healthdomain/healthrepo"
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
@@ -17,11 +17,11 @@ import (
 var healthTracer = otel.Tracer("health")
 
 type ComponentHealth struct {
-	Status domain.HealthStatus `json:"status"`
+	Status healthdomain.HealthStatus `json:"status"`
 }
 
 type CheckReadinessOutput struct {
-	Status     domain.HealthStatus        `json:"status"`
+	Status     healthdomain.HealthStatus        `json:"status"`
 	Components map[string]ComponentHealth `json:"components"`
 }
 
@@ -42,7 +42,7 @@ func (uc *CheckReadinessUseCase) Execute(ctx context.Context) (CheckReadinessOut
 
 	dbPing, _ := uc.healthRepo.Ping(ctx)
 
-	dbStatus := domain.ToHealthStatus(dbPing)
+	dbStatus := healthdomain.ToHealthStatus(dbPing)
 	span.SetAttributes(attribute.String("health.database.status", string(dbStatus)))
 
 	components := map[string]ComponentHealth{
@@ -50,7 +50,7 @@ func (uc *CheckReadinessUseCase) Execute(ctx context.Context) (CheckReadinessOut
 	}
 
 	for name, component := range components {
-		if component.Status == domain.HealthStatusUnhealthy {
+		if component.Status == healthdomain.HealthStatusUnhealthy {
 			err := exceptions.NewServiceUnavailableException(
 				"Readiness check detected unhealthy components",
 				map[string]any{"component": name},
@@ -68,7 +68,7 @@ func (uc *CheckReadinessUseCase) Execute(ctx context.Context) (CheckReadinessOut
 	log.Info("readiness check passed", "components", len(components))
 
 	return CheckReadinessOutput{
-		Status:     domain.HealthStatusHealthy,
+		Status:     healthdomain.HealthStatusHealthy,
 		Components: components,
 	}, nil
 }

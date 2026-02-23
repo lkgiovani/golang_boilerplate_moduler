@@ -1,4 +1,4 @@
-package http
+package usershttp
 
 import "github.com/gofiber/fiber/v2"
 
