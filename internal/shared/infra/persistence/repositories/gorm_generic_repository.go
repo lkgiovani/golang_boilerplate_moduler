@@ -15,7 +15,6 @@ import (
 
 var dbTracer = otel.Tracer("shared.persistence")
 
-// GORMGenericRepository implements GenericRepository using GORM.
 type GORMGenericRepository[T any, ID comparable] struct {
 	db         *gorm.DB
 	entityName string

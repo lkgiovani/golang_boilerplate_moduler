@@ -14,7 +14,6 @@ import (
 
 var tracer = otel.Tracer("health.http")
 
-// HealthController handles health check HTTP requests.
 type HealthController struct {
 	checkHealth    *usecases.CheckHealthUseCase
 	checkReadiness *usecases.CheckReadinessUseCase
@@ -33,7 +32,6 @@ func NewHealthController(
 	}
 }
 
-// CheckHealth handles GET /healthz — liveness probe.
 func (h *HealthController) CheckHealth(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "HealthController.CheckHealth")
 	defer span.End()
@@ -52,7 +50,6 @@ func (h *HealthController) CheckHealth(c *fiber.Ctx) error {
 	return c.JSON(output)
 }
 
-// CheckReadiness handles GET /readyz — readiness probe.
 func (h *HealthController) CheckReadiness(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "HealthController.CheckReadiness")
 	defer span.End()

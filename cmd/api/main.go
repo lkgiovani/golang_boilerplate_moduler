@@ -8,8 +8,7 @@ import (
 )
 
 func main() {
-	// Load .env file if present (development convenience).
-	// In production, environment variables are expected to be set externally.
+
 	_ = godotenv.Load()
 
 	app := fx.New(bootstrap.App)

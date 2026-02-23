@@ -1,7 +1,5 @@
-// Package integration contains end-to-end integration tests.
-// Tests spin up a real PostgreSQL container via testcontainers-go,
-// apply migrations inline, start the full fx app (identical to production),
-// and exercise HTTP endpoints via fiber.Test (in-process, no open port needed).
+
+
 package integration
 
 import (
@@ -31,11 +29,9 @@ var (
 	dbURL    string
 )
 
-// TestMain boots one PostgreSQL container shared across all tests in this package.
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	// ── PostgreSQL container ───────────────────────────────────────────────────
 	pgContainer, err := postgres.Run(ctx,
 		"postgres:17-alpine",
 		postgres.WithDatabase("boilerplate"),
@@ -57,22 +53,17 @@ func TestMain(m *testing.M) {
 		panic("postgres connection string: " + err.Error())
 	}
 
-	// ── Inline migrations ──────────────────────────────────────────────────────
 	if err := applyMigrations(dbURL); err != nil {
 		panic("migrations: " + err.Error())
 	}
 
-	// ── Configure env for config.NewConfig ────────────────────────────────────
 	os.Setenv("DATABASE_URL", dbURL)
 	os.Setenv("SERVICE_NAME", "boilerplate-api-test")
 	os.Setenv("PORT", "3000")
 	os.Setenv("APP_ENV", "test")
 	os.Setenv("LOG_LEVEL", "error")
-	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "") // disable OTEL in tests
+	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "") 
 
-	// ── Build fx app and extract the *fiber.App ────────────────────────────────
-	// fxtest.New wires everything identically to production.
-	// We capture fiberApp via fx.Invoke so we can call fiber.Test in each test.
 	app := fxtest.New(
 		&testing.T{},
 		bootstrap.App,
@@ -86,7 +77,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// applyMigrations runs all schema SQL inline (avoids requiring Docker-in-Docker for Flyway).
 func applyMigrations(url string) error {
 	db, err := sql.Open("postgres", url)
 	if err != nil {
@@ -106,7 +96,6 @@ func applyMigrations(url string) error {
 	return err
 }
 
-// truncateUsers resets the users table between tests for isolation.
 func truncateUsers(t *testing.T) {
 	t.Helper()
 	db, err := sql.Open("postgres", dbURL)
@@ -119,7 +108,6 @@ func truncateUsers(t *testing.T) {
 	}
 }
 
-// request runs an HTTP request against the in-process Fiber app.
 func request(req *http.Request) (*http.Response, error) {
 	return fiberApp.Test(req, 10_000)
 }

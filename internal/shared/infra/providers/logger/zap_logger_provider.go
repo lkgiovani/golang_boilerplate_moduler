@@ -10,13 +10,6 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// ZapLoggerProvider implements providers.LoggerProvider using zap.SugaredLogger.
-// It writes to two destinations simultaneously (tee):
-//  1. stdout — JSON (production) or console (development) format
-//  2. OTLP → OTel Collector → Loki, via the otelzap bridge
-//
-// The otelzap core reads the global OTel LoggerProvider lazily at each write,
-// so it works correctly even when OTel is initialized after the logger.
 type ZapLoggerProvider struct {
 	logger *zap.SugaredLogger
 }
@@ -27,7 +20,6 @@ func NewZapLoggerProvider(cfg *config.Config) (providers.LoggerProvider, error) 
 		level = zapcore.ErrorLevel
 	}
 
-	// ── Core 1: stdout ────────────────────────────────────────────────────────
 	var zapCfg zap.Config
 	if cfg.App.Env == "development" {
 		zapCfg = zap.NewDevelopmentConfig()
@@ -45,15 +37,11 @@ func NewZapLoggerProvider(cfg *config.Config) (providers.LoggerProvider, error) 
 		return nil, err
 	}
 
-	// ── Core 2: OTLP → OTel Collector → Loki ─────────────────────────────────
-	// otelzap.NewCore uses otellog.GetLoggerProvider() lazily on every record,
-	// so it picks up the real provider even when OTel is initialized after.
 	otelCore := otelzap.NewCore(
 		cfg.App.ServiceName,
 		otelzap.WithLoggerProvider(otellog.GetLoggerProvider()),
 	)
 
-	// ── Tee: write to both cores simultaneously ────────────────────────────────
 	teeLogger := zap.New(
 		zapcore.NewTee(base.Core(), otelCore),
 		zap.WithCaller(true),

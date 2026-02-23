@@ -12,8 +12,6 @@ import (
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
-// NewDB is the fx provider for *gorm.DB.
-// Opens a PostgreSQL connection, configures the pool, enables OTEL tracing, and verifies with a ping.
 func NewDB(cfg *config.Config) (*gorm.DB, error) {
 	gormLogger := logger.Default.LogMode(logger.Silent)
 
@@ -36,7 +34,6 @@ func NewDB(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("database ping failed: %w", err)
 	}
 
-	// Enable OpenTelemetry tracing for all GORM queries
 	if err := db.Use(tracing.NewPlugin()); err != nil {
 		return nil, fmt.Errorf("failed to register OTEL tracing plugin: %w", err)
 	}
@@ -44,8 +41,6 @@ func NewDB(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// CloseDB closes the underlying sql.DB connection pool.
-// Called in the fx OnStop lifecycle hook.
 func CloseDB(db *gorm.DB) error {
 	var sqlDB *sql.DB
 	var err error

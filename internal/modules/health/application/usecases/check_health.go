@@ -15,8 +15,6 @@ type CheckHealthOutput struct {
 	Status domain.HealthStatus `json:"status"`
 }
 
-// CheckHealthUseCase always returns healthy — simple liveness probe.
-// Equivalent to CheckHealthUseCase.ts.
 type CheckHealthUseCase struct {
 	logger providers.LoggerProvider
 }

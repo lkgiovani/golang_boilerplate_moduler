@@ -49,8 +49,6 @@ func init() {
 	}
 }
 
-// HTTPMetrics is a Fiber middleware that records HTTP metrics via OpenTelemetry.
-// Equivalent to httpMetrics.ts in the TypeScript project.
 func HTTPMetrics() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()

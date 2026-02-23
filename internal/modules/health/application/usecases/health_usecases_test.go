@@ -10,8 +10,6 @@ import (
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 )
 
-// ── CheckHealthUseCase ────────────────────────────────────────────────────────
-
 func TestCheckHealthUseCase_AlwaysHealthy(t *testing.T) {
 	uc := usecases.NewCheckHealthUseCase(&mockLogger{})
 	out := uc.Execute(context.Background())
@@ -20,8 +18,6 @@ func TestCheckHealthUseCase_AlwaysHealthy(t *testing.T) {
 		t.Fatalf("expected status=healthy, got %q", out.Status)
 	}
 }
-
-// ── CheckReadinessUseCase ─────────────────────────────────────────────────────
 
 func TestCheckReadinessUseCase_DatabaseHealthy(t *testing.T) {
 	repo := &mockHealthRepo{
@@ -72,7 +68,7 @@ func TestCheckReadinessUseCase_DatabaseUnhealthy(t *testing.T) {
 }
 
 func TestCheckReadinessUseCase_DatabasePingFalse(t *testing.T) {
-	// Ping retorna false sem erro (ex: banco vivo mas não respondendo ao ping)
+
 	repo := &mockHealthRepo{
 		pingFn: func(_ context.Context) (bool, error) {
 			return false, nil

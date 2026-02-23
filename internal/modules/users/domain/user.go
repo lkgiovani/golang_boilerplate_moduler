@@ -2,7 +2,6 @@ package domain
 
 import "time"
 
-// User is the GORM entity and domain model for the users module.
 type User struct {
 	ID        uint      `json:"id" gorm:"primarykey"`
 	Name      string    `json:"name"`

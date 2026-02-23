@@ -88,7 +88,6 @@ func TestCreateUser_MissingFields(t *testing.T) {
 func TestGetUser_Success(t *testing.T) {
 	t.Cleanup(func() { truncateUsers(t) })
 
-	// Create user first
 	createReq, _ := http.NewRequest(http.MethodPost, "/api/users",
 		bytes.NewBufferString(`{"name":"Ana","email":"ana@example.com"}`))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -102,7 +101,6 @@ func TestGetUser_Success(t *testing.T) {
 	}
 	createResp.Body.Close()
 
-	// Get the user
 	getReq, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/api/users/%d", created.ID), nil)
 	getResp, err := request(getReq)
 	if err != nil {

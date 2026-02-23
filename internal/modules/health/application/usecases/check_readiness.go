@@ -25,7 +25,6 @@ type CheckReadinessOutput struct {
 	Components map[string]ComponentHealth `json:"components"`
 }
 
-// CheckReadinessUseCase checks all dependencies (database) and returns their health status.
 type CheckReadinessUseCase struct {
 	healthRepo healthrepo.HealthRepository
 	logger     providers.LoggerProvider

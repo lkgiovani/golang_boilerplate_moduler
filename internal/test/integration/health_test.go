@@ -36,7 +36,6 @@ func TestReadyz_DatabaseHealthy(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// With a running postgres container the readiness check must return 200.
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -99,7 +98,6 @@ func TestRequestID_IsReturnedInResponse(t *testing.T) {
 
 func TestRequestID_GeneratedWhenMissing(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "/healthz", nil)
-	// No X-Request-ID header set
 
 	resp, err := request(req)
 	if err != nil {
