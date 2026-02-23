@@ -1,9 +1,9 @@
-package http
+package usershttp
 
 import (
 	"strconv"
 
-	"golang_boilerplate_module/internal/modules/users/application/usecases"
+	"golang_boilerplate_module/internal/modules/users/application/usersusecases"
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/http/middleware"
@@ -17,14 +17,14 @@ import (
 var tracer = otel.Tracer("users.http")
 
 type UserController struct {
-	createUser *usecases.CreateUserUseCase
-	getUser    *usecases.GetUserUseCase
+	createUser *usersusecases.CreateUserUseCase
+	getUser    *usersusecases.GetUserUseCase
 	logger     providers.LoggerProvider
 }
 
 func NewUserController(
-	createUser *usecases.CreateUserUseCase,
-	getUser *usecases.GetUserUseCase,
+	createUser *usersusecases.CreateUserUseCase,
+	getUser *usersusecases.GetUserUseCase,
 	logger providers.LoggerProvider,
 ) *UserController {
 	return &UserController{
@@ -40,7 +40,7 @@ func (ctrl *UserController) Create(c *fiber.Ctx) error {
 
 	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "UserController.Create")
 
-	var input usecases.CreateUserInput
+	var input usersusecases.CreateUserInput
 	if err := c.BodyParser(&input); err != nil {
 		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
 		log.Warn("failed to parse request body", "error", err.Error())

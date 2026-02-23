@@ -1,9 +1,9 @@
-package persistence
+package healthpersistence
 
 import (
 	"context"
 
-	healthrepo "golang_boilerplate_module/internal/modules/health/domain/repositories"
+	"golang_boilerplate_module/internal/modules/health/healthdomain/healthrepo"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"

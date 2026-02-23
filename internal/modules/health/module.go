@@ -1,9 +1,9 @@
 package health
 
 import (
-	"golang_boilerplate_module/internal/modules/health/application/usecases"
-	healthhttp "golang_boilerplate_module/internal/modules/health/infra/http"
-	healthpersistence "golang_boilerplate_module/internal/modules/health/infra/persistence"
+	"golang_boilerplate_module/internal/modules/health/application/healthusecases"
+	"golang_boilerplate_module/internal/modules/health/infra/healthhttp"
+	"golang_boilerplate_module/internal/modules/health/infra/healthpersistence"
 
 	"go.uber.org/fx"
 )
@@ -11,8 +11,8 @@ import (
 var Module = fx.Module("health",
 	fx.Provide(
 		healthpersistence.NewGORMHealthRepository,
-		usecases.NewCheckHealthUseCase,
-		usecases.NewCheckReadinessUseCase,
+		healthusecases.NewCheckHealthUseCase,
+		healthusecases.NewCheckReadinessUseCase,
 		healthhttp.NewHealthController,
 	),
 	fx.Invoke(healthhttp.RegisterRoutes),

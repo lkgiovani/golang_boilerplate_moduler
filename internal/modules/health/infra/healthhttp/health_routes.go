@@ -1,4 +1,4 @@
-package http
+package healthhttp
 
 import "github.com/gofiber/fiber/v2"
 

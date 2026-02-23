@@ -1,4 +1,4 @@
-package domain
+package healthdomain
 
 type HealthStatus string
 

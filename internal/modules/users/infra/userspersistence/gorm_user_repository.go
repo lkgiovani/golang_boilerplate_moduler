@@ -1,11 +1,11 @@
-package persistence
+package userspersistence
 
 import (
 	"context"
 	"errors"
 
-	"golang_boilerplate_module/internal/modules/users/domain"
-	userrepo "golang_boilerplate_module/internal/modules/users/domain/repositories"
+	"golang_boilerplate_module/internal/modules/users/usersdomain"
+	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	sharedrepo "golang_boilerplate_module/internal/shared/infra/persistence/repositories"
 
@@ -18,24 +18,24 @@ import (
 var dbTracer = otel.Tracer("users.persistence")
 
 type GORMUserRepository struct {
-	*sharedrepo.GORMGenericRepository[domain.User, uint]
+	*sharedrepo.GORMGenericRepository[usersdomain.User, uint]
 	db *gorm.DB
 }
 
-func NewGORMUserRepository(db *gorm.DB) userrepo.UserRepository {
+func NewGORMUserRepository(db *gorm.DB) usersrepo.UserRepository {
 	return &GORMUserRepository{
-		GORMGenericRepository: sharedrepo.NewGORMGenericRepository[domain.User, uint](db),
+		GORMGenericRepository: sharedrepo.NewGORMGenericRepository[usersdomain.User, uint](db),
 		db:                    db,
 	}
 }
 
-func (r *GORMUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (r *GORMUserRepository) GetByEmail(ctx context.Context, email string) (*usersdomain.User, error) {
 	ctx, span := dbTracer.Start(ctx, "GORMUserRepository.GetByEmail")
 	defer span.End()
 
 	span.SetAttributes(attribute.String("db.operation", "GetByEmail"))
 
-	var user domain.User
+	var user usersdomain.User
 	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		notFound := exceptions.NewNotFoundException("User not found", nil)

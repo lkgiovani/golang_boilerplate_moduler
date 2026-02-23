@@ -1,10 +1,10 @@
-package usecases
+package usersusecases
 
 import (
 	"context"
 
-	"golang_boilerplate_module/internal/modules/users/domain"
-	userrepo "golang_boilerplate_module/internal/modules/users/domain/repositories"
+	"golang_boilerplate_module/internal/modules/users/usersdomain"
+	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
@@ -27,11 +27,11 @@ type UserOutput struct {
 }
 
 type CreateUserUseCase struct {
-	userRepo userrepo.UserRepository
+	userRepo usersrepo.UserRepository
 	logger   providers.LoggerProvider
 }
 
-func NewCreateUserUseCase(userRepo userrepo.UserRepository, logger providers.LoggerProvider) *CreateUserUseCase {
+func NewCreateUserUseCase(userRepo usersrepo.UserRepository, logger providers.LoggerProvider) *CreateUserUseCase {
 	return &CreateUserUseCase{userRepo: userRepo, logger: logger}
 }
 
@@ -61,7 +61,7 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 		return UserOutput{}, err
 	}
 
-	user := &domain.User{
+	user := &usersdomain.User{
 		Name:  input.Name,
 		Email: input.Email,
 	}

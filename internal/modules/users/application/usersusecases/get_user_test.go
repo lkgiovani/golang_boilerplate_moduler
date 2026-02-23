@@ -1,20 +1,20 @@
-package usecases_test
+package usersusecases_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"golang_boilerplate_module/internal/modules/users/application/usecases"
-	"golang_boilerplate_module/internal/modules/users/domain"
+	"golang_boilerplate_module/internal/modules/users/application/usersusecases"
+	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/shared/domain/exceptions"
 )
 
 func TestGetUserUseCase_Success(t *testing.T) {
-	expected := &domain.User{ID: 42, Name: "Ana", Email: "ana@example.com"}
+	expected := &usersdomain.User{ID: 42, Name: "Ana", Email: "ana@example.com"}
 
 	repo := &mockUserRepo{
-		getByIDFn: func(_ context.Context, id uint) (*domain.User, error) {
+		getByIDFn: func(_ context.Context, id uint) (*usersdomain.User, error) {
 			if id == 42 {
 				return expected, nil
 			}
@@ -22,7 +22,7 @@ func TestGetUserUseCase_Success(t *testing.T) {
 		},
 	}
 
-	uc := usecases.NewGetUserUseCase(repo, &mockLogger{})
+	uc := usersusecases.NewGetUserUseCase(repo, &mockLogger{})
 	out, err := uc.Execute(context.Background(), 42)
 
 	if err != nil {
@@ -43,12 +43,12 @@ func TestGetUserUseCase_NotFound(t *testing.T) {
 	notFoundErr := exceptions.NewNotFoundException("user not found", nil)
 
 	repo := &mockUserRepo{
-		getByIDFn: func(_ context.Context, _ uint) (*domain.User, error) {
+		getByIDFn: func(_ context.Context, _ uint) (*usersdomain.User, error) {
 			return nil, notFoundErr
 		},
 	}
 
-	uc := usecases.NewGetUserUseCase(repo, &mockLogger{})
+	uc := usersusecases.NewGetUserUseCase(repo, &mockLogger{})
 	_, err := uc.Execute(context.Background(), 999)
 
 	if err == nil {
@@ -68,12 +68,12 @@ func TestGetUserUseCase_RepositoryError(t *testing.T) {
 	repoErr := errors.New("timeout")
 
 	repo := &mockUserRepo{
-		getByIDFn: func(_ context.Context, _ uint) (*domain.User, error) {
+		getByIDFn: func(_ context.Context, _ uint) (*usersdomain.User, error) {
 			return nil, repoErr
 		},
 	}
 
-	uc := usecases.NewGetUserUseCase(repo, &mockLogger{})
+	uc := usersusecases.NewGetUserUseCase(repo, &mockLogger{})
 	_, err := uc.Execute(context.Background(), 1)
 
 	if err == nil {
