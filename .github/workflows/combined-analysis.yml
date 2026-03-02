@@ -86,7 +86,7 @@ jobs:
           cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         env:
           GOLANGCI_LINT_SKIP_GO_VERSION_CHECK: 1
         with:
