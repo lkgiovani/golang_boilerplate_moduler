@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/gofiber/contrib/otelfiber/v2 v2.2.3
-	github.com/gofiber/fiber/v2 v2.52.11
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.11.2
