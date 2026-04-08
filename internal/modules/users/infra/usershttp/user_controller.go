@@ -54,7 +54,7 @@ func (ctrl *UserController) Create(c *fiber.Ctx) error {
 		return err
 	}
 
-	span.SetAttributes(attribute.Int("user.id", int(output.ID)))
+	span.SetAttributes(attribute.Int64("user.id", output.ID))
 	return c.Status(fiber.StatusCreated).JSON(output)
 }
 
@@ -65,7 +65,7 @@ func (ctrl *UserController) GetByID(c *fiber.Ctx) error {
 	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "UserController.GetByID")
 
 	idStr := c.Params("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		domainErr := exceptions.NewBadRequestException("Invalid user ID", nil)
 		log.Warn("invalid user id param", "id", idStr)
@@ -73,9 +73,9 @@ func (ctrl *UserController) GetByID(c *fiber.Ctx) error {
 		return domainErr
 	}
 
-	span.SetAttributes(attribute.Int("user.id", int(id)))
+	span.SetAttributes(attribute.Int64("user.id", id))
 
-	output, err := ctrl.getUser.Execute(ctx, uint(id))
+	output, err := ctrl.getUser.Execute(ctx, id)
 	if err != nil {
 		observability.RecordError(span, err)
 		return err

@@ -24,6 +24,9 @@ func TestCheckReadinessUseCase_DatabaseHealthy(t *testing.T) {
 		pingFn: func(_ context.Context) (bool, error) {
 			return true, nil
 		},
+		pingRedisFn: func(_ context.Context) bool {
+			return true
+		},
 	}
 
 	uc := healthusecases.NewCheckReadinessUseCase(repo, &mockLogger{})
@@ -41,6 +44,13 @@ func TestCheckReadinessUseCase_DatabaseHealthy(t *testing.T) {
 	}
 	if db.Status != healthdomain.HealthStatusHealthy {
 		t.Fatalf("expected database status=healthy, got %q", db.Status)
+	}
+	redis, ok := out.Components["redis"]
+	if !ok {
+		t.Fatal("expected 'redis' component in response")
+	}
+	if redis.Status != healthdomain.HealthStatusHealthy {
+		t.Fatalf("expected redis status=healthy, got %q", redis.Status)
 	}
 }
 
@@ -79,6 +89,32 @@ func TestCheckReadinessUseCase_DatabasePingFalse(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected SERVICE_UNAVAILABLE when ping returns false, got nil")
+	}
+
+	var domainErr *exceptions.DomainError
+	if !errors.As(err, &domainErr) {
+		t.Fatalf("expected DomainError, got %T", err)
+	}
+	if domainErr.Code != exceptions.CodeServiceUnavailable {
+		t.Fatalf("expected SERVICE_UNAVAILABLE, got %s", domainErr.Code)
+	}
+}
+
+func TestCheckReadinessUseCase_RedisUnhealthy(t *testing.T) {
+	repo := &mockHealthRepo{
+		pingFn: func(_ context.Context) (bool, error) {
+			return true, nil
+		},
+		pingRedisFn: func(_ context.Context) bool {
+			return false
+		},
+	}
+
+	uc := healthusecases.NewCheckReadinessUseCase(repo, &mockLogger{})
+	_, err := uc.Execute(context.Background())
+
+	if err == nil {
+		t.Fatal("expected SERVICE_UNAVAILABLE when redis is unhealthy, got nil")
 	}
 
 	var domainErr *exceptions.DomainError

@@ -56,6 +56,9 @@ func TestReadyz_DatabaseHealthy(t *testing.T) {
 	if db, ok := body.Components["database"]; !ok || db.Status != "healthy" {
 		t.Fatalf("expected database component healthy, got %+v", body.Components)
 	}
+	if redis, ok := body.Components["redis"]; !ok || redis.Status != "healthy" {
+		t.Fatalf("expected redis component healthy, got %+v", body.Components)
+	}
 }
 
 func TestNotFound(t *testing.T) {

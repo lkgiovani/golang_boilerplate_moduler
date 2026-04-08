@@ -5,6 +5,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/health/healthdomain/healthrepo"
 
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -14,11 +15,12 @@ import (
 var dbTracer = otel.Tracer("health.persistence")
 
 type GORMHealthRepository struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
 }
 
-func NewGORMHealthRepository(db *gorm.DB) healthrepo.HealthRepository {
-	return &GORMHealthRepository{db: db}
+func NewGORMHealthRepository(db *gorm.DB, redisClient *redis.Client) healthrepo.HealthRepository {
+	return &GORMHealthRepository{db: db, redis: redisClient}
 }
 
 func (r *GORMHealthRepository) Ping(ctx context.Context) (bool, error) {
@@ -42,4 +44,20 @@ func (r *GORMHealthRepository) Ping(ctx context.Context) (bool, error) {
 
 	span.SetStatus(codes.Ok, "ping ok")
 	return true, nil
+}
+
+func (r *GORMHealthRepository) PingRedis(ctx context.Context) bool {
+	ctx, span := dbTracer.Start(ctx, "GORMHealthRepository.PingRedis")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("db.operation", "redis_ping"))
+
+	if err := r.redis.Ping(ctx).Err(); err != nil {
+		span.SetStatus(codes.Error, "redis ping failed")
+		span.RecordError(err)
+		return false
+	}
+
+	span.SetStatus(codes.Ok, "redis ping ok")
+	return true
 }

@@ -7,7 +7,8 @@ import (
 )
 
 type mockHealthRepo struct {
-	pingFn func(ctx context.Context) (bool, error)
+	pingFn      func(ctx context.Context) (bool, error)
+	pingRedisFn func(ctx context.Context) bool
 }
 
 func (m *mockHealthRepo) Ping(ctx context.Context) (bool, error) {
@@ -15,6 +16,13 @@ func (m *mockHealthRepo) Ping(ctx context.Context) (bool, error) {
 		return m.pingFn(ctx)
 	}
 	return true, nil
+}
+
+func (m *mockHealthRepo) PingRedis(ctx context.Context) bool {
+	if m.pingRedisFn != nil {
+		return m.pingRedisFn(ctx)
+	}
+	return true
 }
 
 type mockLogger struct{}

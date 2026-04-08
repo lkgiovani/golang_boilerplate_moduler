@@ -9,10 +9,10 @@ import (
 
 type mockUserRepo struct {
 	addFn        func(ctx context.Context, u *usersdomain.User) (*usersdomain.User, error)
-	getByIDFn    func(ctx context.Context, id uint) (*usersdomain.User, error)
+	getByIDFn    func(ctx context.Context, id int64) (*usersdomain.User, error)
 	getByEmailFn func(ctx context.Context, email string) (*usersdomain.User, error)
-	updateFn     func(ctx context.Context, id uint, updates map[string]any) (*usersdomain.User, error)
-	deleteFn     func(ctx context.Context, id uint) error
+	updateFn     func(ctx context.Context, id int64, updates map[string]any) (*usersdomain.User, error)
+	deleteFn     func(ctx context.Context, id int64) error
 	deleteAllFn  func(ctx context.Context) error
 }
 
@@ -23,7 +23,7 @@ func (m *mockUserRepo) Add(ctx context.Context, u *usersdomain.User) (*usersdoma
 	return u, nil
 }
 
-func (m *mockUserRepo) GetByID(ctx context.Context, id uint) (*usersdomain.User, error) {
+func (m *mockUserRepo) GetByID(ctx context.Context, id int64) (*usersdomain.User, error) {
 	if m.getByIDFn != nil {
 		return m.getByIDFn(ctx, id)
 	}
@@ -37,14 +37,14 @@ func (m *mockUserRepo) GetByEmail(ctx context.Context, email string) (*usersdoma
 	return nil, nil
 }
 
-func (m *mockUserRepo) UpdateByID(ctx context.Context, id uint, updates map[string]any) (*usersdomain.User, error) {
+func (m *mockUserRepo) UpdateByID(ctx context.Context, id int64, updates map[string]any) (*usersdomain.User, error) {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, id, updates)
 	}
 	return nil, nil
 }
 
-func (m *mockUserRepo) DeleteByID(ctx context.Context, id uint) error {
+func (m *mockUserRepo) DeleteByID(ctx context.Context, id int64) error {
 	if m.deleteFn != nil {
 		return m.deleteFn(ctx, id)
 	}

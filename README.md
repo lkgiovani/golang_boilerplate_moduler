@@ -1,6 +1,6 @@
 # golang-boilerplate-api
 
-> **Boilerplate** de API REST em Go com arquitetura modular, observabilidade completa (tracing · métricas · logs) e testes de integração baseados em containers.
+> **Boilerplate** de API REST em Go para backends SaaS com autenticacao, planos/assinatura, pagamento e observabilidade completa.
 
 ---
 
@@ -11,66 +11,111 @@
 | HTTP | [Fiber v2](https://github.com/gofiber/fiber) |
 | DI / Lifecycle | [Uber fx](https://github.com/uber-go/fx) |
 | ORM | [GORM](https://gorm.io) + PostgreSQL |
+| Auth | [golang-jwt/v5](https://github.com/golang-jwt/jwt) + bcrypt |
+| Cache | [go-redis/v9](https://github.com/redis/go-redis) |
 | Migrations | [Flyway](https://flywaydb.org) |
 | Logging | [Uber zap](https://github.com/uber-go/zap) |
 | Tracing | OpenTelemetry → Tempo |
-| Métricas | OpenTelemetry → Prometheus |
+| Metricas | OpenTelemetry → Prometheus |
 | Logs aggregation | OpenTelemetry → Loki |
 | Dashboards | Grafana |
-| Testes de integração | [testcontainers-go](https://testcontainers.com/guides/getting-started-with-testcontainers-for-go/) |
+| Testes de integracao | [testcontainers-go](https://testcontainers.com/guides/getting-started-with-testcontainers-for-go/) |
 | Git hooks | [Lefthook](https://github.com/evilmartians/lefthook) |
 
 ---
 
 ## Arquitetura
 
-O projeto segue **Clean Architecture** organizada por módulos de negócio. Cada módulo contém suas próprias camadas sem cruzar limites de domínio.
+**Clean Architecture** organizada por modulos de negocio. Cada modulo contem suas proprias camadas sem cruzar limites de dominio.
 
 ```
 internal/
-├── bootstrap/          # Composição do app Fiber + wiring fx (root)
-├── config/             # Configuração via variáveis de ambiente
-├── shared/             # Infraestrutura e abstrações reutilizáveis
+├── bootstrap/          # Composicao do app Fiber + wiring fx (root)
+├── config/             # Configuracao via variaveis de ambiente
+├── shared/             # Infraestrutura e abstracoes reutilizaveis
 │   ├── domain/
 │   │   ├── exceptions/ # DomainError + construtores tipados
-│   │   ├── providers/  # Interface LoggerProvider
+│   │   ├── providers/  # Interfaces: LoggerProvider, CacheProvider, EmailProvider
 │   │   └── repositories/ # GenericRepository[T, ID]
 │   └── infra/
 │       ├── http/middleware/  # ErrorHandler, RequestID, HTTPMetrics
-│       ├── observability/    # Helpers de span (RecordError, LoggerWithTrace)
-│       ├── persistence/      # Conexão GORM + GormGenericRepository
-│       ├── providers/logger/ # ZapLoggerProvider
-│       └── telemetry/        # Setup OpenTelemetry (tracer, meter, logger)
+│       ├── persistence/      # GORM + Redis connections
+│       ├── providers/        # Logger (Zap), Cache (Redis), Email (SMTP)
+│       └── telemetry/        # OpenTelemetry setup
 ├── modules/
-│   ├── health/
-│   │   ├── application/usecases/  # CheckHealthUseCase, CheckReadinessUseCase
-│   │   ├── domain/                # HealthStatus, HealthRepository interface
-│   │   └── infra/
-│   │       ├── http/              # HealthController, routes
-│   │       └── persistence/       # GormHealthRepository
-│   └── users/
-│       ├── application/usecases/  # CreateUserUseCase, GetUserUseCase
-│       ├── domain/                # User entity, UserRepository interface
-│       └── infra/
-│           ├── http/              # UserController, routes
-│           └── persistence/       # GormUserRepository
+│   ├── auth/           # Autenticacao (JWT, refresh tokens, middleware)
+│   ├── health/         # Health checks (liveness + readiness)
+│   ├── security/       # Monitoramento de seguranca (suspicious activities, blocks)
+│   └── users/          # Gestao de usuarios
 └── test/
-    └── integration/               # Testes e2e com PostgreSQL via testcontainers
+    └── integration/    # Testes e2e com PostgreSQL + Redis via testcontainers
 ```
 
-### Fluxo de uma requisição
+### Fluxo de uma requisicao
 
 ```
 HTTP Request
   └── Fiber (CORS → OTel Span → HTTP Metrics → Request ID)
-        └── Controller      (valida input, chama use case)
-              └── UseCase   (regras de negócio, abre span filho)
-                    └── Repository  (GORM + span de DB via gorm-otel)
+        └── Auth Middleware (JWT header OU cookie → valida → Redis blacklist check)
+              └── Controller      (valida input, chama use case)
+                    └── UseCase   (regras de negocio, abre span filho)
+                          └── Repository  (GORM + span de DB via gorm-otel)
 ```
 
 ---
 
-## Pré-requisitos
+## Modulos implementados
+
+### Auth (`/auth`)
+
+| Metodo | Path | Descricao |
+|---|---|---|
+| `POST` | `/auth/register` | Registro com bcrypt hash |
+| `POST` | `/auth/login` | Login retorna JWT access + refresh token |
+| `POST` | `/auth/refresh` | Rotacao de refresh token com theft detection |
+| `POST` | `/auth/logout` | Blacklist do token + revoga refresh tokens |
+
+**Refresh tokens** armazenados no PostgreSQL com:
+- `family_id` para deteccao de roubo (family-based rotation)
+- `device_id`, `user_agent`, `ip_address` para rastreamento
+- `token_hash` (SHA-256) — JWT raw nunca e armazenado
+
+**Auth middleware** dual-mode:
+- `Authorization: Bearer <token>` (mobile/API)
+- Cookie `access_token` httpOnly (web)
+
+### Health (`/healthz`, `/readyz`)
+
+| Metodo | Path | Descricao |
+|---|---|---|
+| `GET` | `/healthz` | Liveness — sempre 200 |
+| `GET` | `/readyz` | Readiness — verifica PostgreSQL + Redis |
+
+### Users (`/api/users`)
+
+| Metodo | Path | Descricao |
+|---|---|---|
+| `POST` | `/api/users` | Cria usuario |
+| `GET` | `/api/users/:id` | Busca usuario por ID |
+
+---
+
+## Database Schema
+
+6 migrations Flyway:
+
+| Migration | Tabela | Descricao |
+|---|---|---|
+| V1 | `users` | Usuarios (bigserial, password, img_url, admin, active, source, metadata) |
+| V2 | `refresh_tokens` | Refresh tokens com family rotation e device tracking |
+| V3 | `suspicious_activities`, `user_security_blocks` | Monitoramento de seguranca |
+| V4 | `email_verification_tokens` | Tokens de confirmacao de email |
+| V5 | `password_reset_tokens` | Tokens de recuperacao de senha |
+| V6 | `plans`, `subscriptions`, `payment_events` | Planos, assinaturas e eventos de pagamento |
+
+---
+
+## Pre-requisitos
 
 - **Go 1.21+**
 - **Docker** e **Docker Compose**
@@ -78,251 +123,127 @@ HTTP Request
 
 ---
 
-## Configuração
-
-Copie o arquivo de exemplo e ajuste conforme necessário:
+## Configuracao
 
 ```bash
 cp .env.example .env
 ```
 
-| Variável | Padrão | Descrição |
+| Variavel | Padrao | Descricao |
 |---|---|---|
-| `SERVICE_NAME` | `boilerplate-api` | Nome do serviço nos traces/logs |
+| `SERVICE_NAME` | `boilerplate-api` | Nome do servico nos traces/logs |
 | `PORT` | `3000` | Porta HTTP |
-| `APP_ENV` | `development` | Ambiente (`development`, `production`, `test`) |
-| `LOG_LEVEL` | `debug` | Nível de log (`debug`, `info`, `warn`, `error`) |
+| `APP_ENV` | `development` | Ambiente |
 | `DATABASE_URL` | — | Connection string PostgreSQL |
-| `DATABASE_MAX_CONNECTIONS` | `10` | Pool máximo de conexões |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Endpoint OTLP HTTP (vazio = desativado) |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Protocolo OTLP |
+| `REDIS_URL` | `redis://localhost:6379/0` | Connection string Redis |
+| `JWT_ACCESS_SECRET` | — | Chave HMAC para access tokens |
+| `JWT_REFRESH_SECRET` | — | Chave HMAC para refresh tokens |
+| `SMTP_HOST` | `localhost` | Host SMTP para emails |
+| `SMTP_PORT` | `1025` | Porta SMTP |
+| `EMAIL_FROM` | `noreply@example.com` | Remetente padrao |
 
 ---
 
 ## Rodando localmente
 
-### Apenas a aplicação (requer PostgreSQL externo)
-
-```bash
-# 1. Configure o .env com DATABASE_URL apontando para seu PostgreSQL
-cp .env.example .env
-
-# 2. Aplique as migrations
-make migrate
-
-# 3. Starte a API
-make run
-```
-
-### Stack completa com observabilidade (recomendado)
+### Stack completa (recomendado)
 
 ```bash
 docker compose up
 ```
 
-Sobe todos os serviços:
-
-| Serviço | URL |
+| Servico | URL |
 |---|---|
 | API | http://localhost:3000 |
 | Grafana | http://localhost:3001 |
+| MailHog | http://localhost:8025 |
 | PostgreSQL | localhost:5432 |
-| OTLP HTTP | http://localhost:4318 |
+| Redis | localhost:6379 |
 
----
+### Apenas a aplicacao
 
-## Endpoints
-
-### Health
-
-| Método | Path | Descrição |
-|---|---|---|
-| `GET` | `/healthz` | Liveness — responde `200 { "status": "healthy" }` sempre |
-| `GET` | `/readyz` | Readiness — verifica conexão com o banco |
-
-```jsonc
-// GET /readyz — exemplo de resposta
-{
-  "status": "healthy",
-  "components": {
-    "database": { "status": "healthy" }
-  }
-}
+```bash
+cp .env.example .env
+make migrate
+make run
 ```
-
-### Users
-
-| Método | Path | Descrição |
-|---|---|---|
-| `POST` | `/api/users` | Cria um novo usuário |
-| `GET` | `/api/users/:id` | Busca usuário por ID |
-
-```jsonc
-// POST /api/users
-{ "name": "João Silva", "email": "joao@example.com" }
-
-// 201 Created
-{ "id": 1, "name": "João Silva", "email": "joao@example.com" }
-```
-
-**Códigos de erro:**
-
-| Código HTTP | Quando |
-|---|---|
-| `400` | Body malformado ou campos obrigatórios ausentes |
-| `404` | Usuário não encontrado |
-| `422` | E-mail já cadastrado |
-| `503` | Banco indisponível (apenas `/readyz`) |
 
 ---
 
 ## Comandos Make
 
 ```bash
-make run              # Inicia a API (carrega .env automaticamente)
+make run              # Inicia a API
 make build            # Compila para bin/api
-make tidy             # Sincroniza go.mod e go.sum
+make tidy             # go mod tidy
 
-make test/unit        # Testes unitários dos use cases (sem Docker, rápidos)
-make test/integration # Testes de integração com PostgreSQL via testcontainers
-make test             # Executa unit → integration em sequência
+make test/unit        # Testes unitarios (sem Docker)
+make test/integration # Testes de integracao (testcontainers)
+make test             # Ambos
 
-make migrate          # Aplica as migrations pendentes via Flyway
-make migrate-info     # Exibe o status das migrations
+make migrate          # Aplica migrations via Flyway
+make migrate-info     # Status das migrations
 ```
 
 ---
 
 ## Testes
 
-### Unitários (use cases)
-
-Testam a lógica de negócio isolada através de mocks manuais. **Não precisam de Docker.**
+### Unitarios
 
 ```bash
 make test/unit
 ```
 
-Cobre:
+Testam logica de negocio isolada com mocks manuais. Sem Docker.
 
-- `CreateUserUseCase` — sucesso, campos ausentes, e-mail duplicado, erro de repositório
-- `GetUserUseCase` — sucesso, not found, erro de repositório
-- `CheckHealthUseCase` — sempre retorna `healthy`
-- `CheckReadinessUseCase` — banco saudável, banco unhealthy, ping retorna `false`
-
-### Integração (end-to-end)
-
-Sobem um container **PostgreSQL 17** real via testcontainers, aplicam as migrations inline e exercitam os endpoints HTTP usando `fiber.Test` (sem abrir porta de rede).
+### Integracao
 
 ```bash
 make test/integration
 ```
 
-Cobre:
-
-- `GET /healthz`, `GET /readyz` — liveness e readiness
-- `X-Request-ID` — propagação e geração automática
-- `POST /api/users` — sucesso, e-mail duplicado, campos ausentes
-- `GET /api/users/:id` — sucesso, not found, ID inválido
-
----
-
-## Observabilidade
-
-A stack é provisionada automaticamente pelo `docker compose up`. Todos os sinais convergem no **OpenTelemetry Collector** antes de serem roteados.
-
-```
-API (OTLP HTTP :4318)
-  └── OTel Collector
-        ├── Traces  → Tempo  (visualização: Grafana → Explore → Tempo)
-        ├── Métricas → Prometheus (visualização: Grafana → Explore → Prometheus)
-        └── Logs   → Loki   (visualização: Grafana → Explore → Loki)
-```
-
-**Configurações em** `monitoring/`:
-
-| Arquivo | Propósito |
-|---|---|
-| `otel-collector-config.yaml` | Pipeline receivers / processors / exporters |
-| `tempo-config.yaml` | Armazenamento de traces |
-| `loki-config.yaml` | Armazenamento de logs |
-| `prometheus.yaml` | Scrape configs |
-| `grafana-datasources.yaml` | Provisionamento automático das datasources |
+Sobem containers reais (PostgreSQL 17 + Redis 7 + MailHog) via testcontainers. Exercitam endpoints HTTP com `fiber.Test`.
 
 ---
 
 ## Git Hooks (Lefthook)
 
-Instale o Lefthook e ative os hooks:
-
 ```bash
-# Instalar Lefthook (uma vez)
 go install github.com/evilmartians/lefthook@latest
-
-# Ativar os hooks no repositório
 lefthook install
 ```
 
-| Hook | Ação |
+| Hook | Acao |
 |---|---|
-| `commit-msg` | Valida formato Conventional Commits e adiciona emoji |
+| `commit-msg` | Valida Conventional Commits + emoji |
 | `pre-commit` | `gofmt`, `go vet`, `golangci-lint --fix` |
-| `pre-push` | Valida nome do branch (`feature/`, `fix/`, `hotfix/`, `docs/`, `refactor/`, `test/`, `build/`) |
-
-### Conventional Commits
-
-```
-feat(users): add create user endpoint   →  ✨ feat(users): ...
-fix(health): correct readiness check    →  🐛 fix(health): ...
-chore: update dependencies              →  🔧 chore: ...
-```
+| `pre-push` | Valida nome do branch |
 
 ---
 
 ## CI/CD (GitHub Actions)
 
-O workflow `.github/workflows/combined-analysis.yml` é ativado em Pull Requests para `develop` e `main`.
+Workflow `.github/workflows/combined-analysis.yml` em PRs para `develop` e `main`:
 
-```
-detect-changes
-├── CodeQL          (análise estática de segurança)
-├── Lint            (golangci-lint)
-├── Test-Unit       (use cases, sem Docker) ──→ Test-Integration (testcontainers)
-└── Security        (govulncheck)
-```
-
-O **Dependabot** (`weekly`) monitora atualizações em `go.mod`, `Dockerfile` e GitHub Actions.
+- CodeQL (seguranca)
+- golangci-lint
+- Testes unitarios + integracao
+- govulncheck
 
 ---
 
-## Migrations
+## Roadmap
 
-As migrations ficam em `migrations/` no formato Flyway (`V1__description.sql`).
+Progresso atual do boilerplate:
 
-```bash
-# Aplicar migrations (requer PostgreSQL rodando)
-make migrate
-
-# Ver status
-make migrate-info
-```
-
-No `docker compose up`, o Flyway roda automaticamente antes da API subir.
-
----
-
-## Estrutura de arquivos raiz
-
-```
-.
-├── cmd/api/main.go          # Entrypoint
-├── internal/                # Todo o código da aplicação
-├── migrations/              # Scripts SQL (Flyway)
-├── monitoring/              # Configs OTel Collector, Tempo, Loki, Prometheus, Grafana
-├── Dockerfile               # Multi-stage build (builder + alpine runtime)
-├── docker-compose.yaml      # Stack completa com observabilidade
-├── Makefile                 # Comandos de desenvolvimento
-├── lefthook.yml             # Git hooks
-├── go.mod / go.sum          # Dependências Go
-└── .env.example             # Template de variáveis de ambiente
-```
+| # | Phase | Status |
+|---|-------|--------|
+| 1 | Redis + Cache | ✓ |
+| 2 | Email Service (adapter pattern) | ✓ |
+| 3 | User Entity + Migrations | ✓ |
+| 4 | Auth Foundation (JWT + family rotation) | ✓ |
+| 5 | Account Lifecycle (confirm email, reset password, profile) | ○ |
+| 6 | Security Monitoring | ○ |
+| 7 | Plans + Subscriptions + Payments (Stripe) | ○ |
+| 8 | Social Login (Google + Apple) | ○ |

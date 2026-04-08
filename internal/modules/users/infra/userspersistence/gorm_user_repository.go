@@ -18,13 +18,13 @@ import (
 var dbTracer = otel.Tracer("users.persistence")
 
 type GORMUserRepository struct {
-	*sharedrepo.GORMGenericRepository[usersdomain.User, uint]
+	*sharedrepo.GORMGenericRepository[usersdomain.User, int64]
 	db *gorm.DB
 }
 
 func NewGORMUserRepository(db *gorm.DB) usersrepo.UserRepository {
 	return &GORMUserRepository{
-		GORMGenericRepository: sharedrepo.NewGORMGenericRepository[usersdomain.User, uint](db),
+		GORMGenericRepository: sharedrepo.NewGORMGenericRepository[usersdomain.User, int64](db),
 		db:                    db,
 	}
 }
@@ -48,6 +48,6 @@ func (r *GORMUserRepository) GetByEmail(ctx context.Context, email string) (*use
 		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
 	}
 
-	span.SetAttributes(attribute.Int("user.id", int(user.ID)))
+	span.SetAttributes(attribute.Int64("user.id", user.ID))
 	return &user, nil
 }

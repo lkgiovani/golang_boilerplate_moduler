@@ -15,14 +15,33 @@ services:
       DATABASE_MAX_CONNECTIONS: "10"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      EMAIL_FROM: noreply@example.com
+      EMAIL_FROM_NAME: SaaS Boilerplate
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       flyway:
         condition: service_completed_successfully
       otel-collector:
         condition: service_started
     restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   postgres:
     image: postgres:17-alpine
@@ -92,6 +111,12 @@ services:
     volumes:
       - ./monitoring/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
   grafana:
     image: grafana/grafana:12.3.3

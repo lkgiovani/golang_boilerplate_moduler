@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"golang_boilerplate_module/internal/config"
+	"golang_boilerplate_module/internal/modules/auth"
 	"golang_boilerplate_module/internal/modules/health"
 	"golang_boilerplate_module/internal/modules/users"
 	"golang_boilerplate_module/internal/shared/domain/providers"
@@ -70,5 +71,6 @@ var App = fx.Options(
 	sharedfx.Module,
 	health.Module,
 	users.Module,
+	auth.Module,
 	fx.Invoke(StartFiberApp),
 )

@@ -21,7 +21,7 @@ type CreateUserInput struct {
 }
 
 type UserOutput struct {
-	ID    uint   `json:"id"`
+	ID    int64  `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
@@ -73,7 +73,7 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 		return UserOutput{}, err
 	}
 
-	span.SetAttributes(attribute.Int("user.id", int(created.ID)))
+	span.SetAttributes(attribute.Int64("user.id", created.ID))
 	log.Info("user created successfully", "userId", created.ID)
 
 	return UserOutput{

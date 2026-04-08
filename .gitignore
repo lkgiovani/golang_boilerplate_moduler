@@ -7,6 +7,10 @@ tmp/
 *.so
 *.dylib
 
+.planning
+CLAUDE.md
+CONTRIBUTING.md
+
 # test binaries
 *.test
 

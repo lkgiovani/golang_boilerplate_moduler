@@ -41,12 +41,18 @@ func (uc *CheckReadinessUseCase) Execute(ctx context.Context) (CheckReadinessOut
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "CheckReadiness")
 
 	dbPing, _ := uc.healthRepo.Ping(ctx)
+	redisPing := uc.healthRepo.PingRedis(ctx)
 
 	dbStatus := healthdomain.ToHealthStatus(dbPing)
-	span.SetAttributes(attribute.String("health.database.status", string(dbStatus)))
+	redisStatus := healthdomain.ToHealthStatus(redisPing)
+	span.SetAttributes(
+		attribute.String("health.database.status", string(dbStatus)),
+		attribute.String("health.redis.status", string(redisStatus)),
+	)
 
 	components := map[string]ComponentHealth{
 		"database": {Status: dbStatus},
+		"redis":    {Status: redisStatus},
 	}
 
 	for name, component := range components {

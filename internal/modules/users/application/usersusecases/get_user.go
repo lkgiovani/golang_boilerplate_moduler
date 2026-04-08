@@ -19,11 +19,11 @@ func NewGetUserUseCase(userRepo usersrepo.UserRepository, logger providers.Logge
 	return &GetUserUseCase{userRepo: userRepo, logger: logger}
 }
 
-func (uc *GetUserUseCase) Execute(ctx context.Context, id uint) (UserOutput, error) {
+func (uc *GetUserUseCase) Execute(ctx context.Context, id int64) (UserOutput, error) {
 	ctx, span := userTracer.Start(ctx, "GetUserUseCase.Execute")
 	defer span.End()
 
-	span.SetAttributes(attribute.Int("user.id", int(id)))
+	span.SetAttributes(attribute.Int64("user.id", id))
 
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "GetUser", "userId", id)
 

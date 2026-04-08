@@ -14,7 +14,7 @@ func TestGetUserUseCase_Success(t *testing.T) {
 	expected := &usersdomain.User{ID: 42, Name: "Ana", Email: "ana@example.com"}
 
 	repo := &mockUserRepo{
-		getByIDFn: func(_ context.Context, id uint) (*usersdomain.User, error) {
+		getByIDFn: func(_ context.Context, id int64) (*usersdomain.User, error) {
 			if id == 42 {
 				return expected, nil
 			}
@@ -43,7 +43,7 @@ func TestGetUserUseCase_NotFound(t *testing.T) {
 	notFoundErr := exceptions.NewNotFoundException("user not found", nil)
 
 	repo := &mockUserRepo{
-		getByIDFn: func(_ context.Context, _ uint) (*usersdomain.User, error) {
+		getByIDFn: func(_ context.Context, _ int64) (*usersdomain.User, error) {
 			return nil, notFoundErr
 		},
 	}
@@ -68,7 +68,7 @@ func TestGetUserUseCase_RepositoryError(t *testing.T) {
 	repoErr := errors.New("timeout")
 
 	repo := &mockUserRepo{
-		getByIDFn: func(_ context.Context, _ uint) (*usersdomain.User, error) {
+		getByIDFn: func(_ context.Context, _ int64) (*usersdomain.User, error) {
 			return nil, repoErr
 		},
 	}
