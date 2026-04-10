@@ -77,7 +77,8 @@ func (r *GORMSubscriptionRepository) GetByStripeSubscriptionID(ctx context.Conte
 	return &sub, nil
 }
 
-// GetByStripeCustomerID retrieves an active/trialing/past_due subscription by Stripe customer ID.
+// GetByStripeCustomerID retrieves a subscription by Stripe customer ID.
+// Includes incomplete status so checkout.session.completed webhooks can activate pending subscriptions.
 func (r *GORMSubscriptionRepository) GetByStripeCustomerID(ctx context.Context, stripeCustID string) (*plansdomain.Subscription, error) {
 	ctx, span := dbTracer.Start(ctx, "GORMSubscriptionRepository.GetByStripeCustomerID")
 	defer span.End()
@@ -90,6 +91,7 @@ func (r *GORMSubscriptionRepository) GetByStripeCustomerID(ctx context.Context, 
 			string(plansdomain.StatusActive),
 			string(plansdomain.StatusTrialing),
 			string(plansdomain.StatusPastDue),
+			string(plansdomain.StatusIncomplete),
 		}).
 		First(&sub).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

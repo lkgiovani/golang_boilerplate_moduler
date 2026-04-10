@@ -115,10 +115,15 @@ func TestMain(m *testing.M) {
 	os.Setenv("JWT_ACCESS_EXPIRY_MIN", "15")
 	os.Setenv("JWT_REFRESH_EXPIRY_DAYS", "7")
 	os.Setenv("JWT_ISSUER", "saas-boilerplate-test")
+	os.Setenv("STRIPE_SECRET_KEY", "sk_test_fake_for_integration_tests")
+	os.Setenv("STRIPE_WEBHOOK_SECRET", "whsec_fake_for_integration_tests")
 
 	app := fxtest.New(
 		&testing.T{},
 		bootstrap.App,
+		fx.Decorate(func() providers.PaymentGateway {
+			return NewMockPaymentGateway()
+		}),
 		fx.Invoke(func(a *fiber.App, _ providers.LoggerProvider, cp providers.CacheProvider, ep providers.EmailProvider) {
 			fiberApp = a
 			cacheProvider = cp
@@ -265,6 +270,84 @@ func applyMigrations(url string) error {
 		return fmt.Errorf("create password_reset_tokens: %w", err)
 	}
 
+	// V6: plans, subscriptions, payment_events
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS plans (
+			id               BIGSERIAL PRIMARY KEY,
+			name             VARCHAR(255) NOT NULL,
+			slug             VARCHAR(255) NOT NULL UNIQUE,
+			description      TEXT,
+			price_cents      BIGINT NOT NULL DEFAULT 0,
+			currency         VARCHAR(3) NOT NULL DEFAULT 'BRL',
+			billing_interval VARCHAR(20) NOT NULL DEFAULT 'monthly',
+			features         JSONB NOT NULL DEFAULT '{}',
+			active           BOOLEAN NOT NULL DEFAULT TRUE,
+			sort_order       INTEGER NOT NULL DEFAULT 0,
+			stripe_price_id  VARCHAR(255),
+			created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+			updated_at       TIMESTAMP DEFAULT NOW(),
+			CONSTRAINT chk_billing_interval CHECK (billing_interval IN ('monthly', 'yearly', 'lifetime'))
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create plans: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_plans_active ON plans(active)`)
+	if err != nil {
+		return fmt.Errorf("create idx_plans_active: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_plans_slug ON plans(slug)`)
+	if err != nil {
+		return fmt.Errorf("create idx_plans_slug: %w", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS subscriptions (
+			id                     BIGSERIAL PRIMARY KEY,
+			user_id                BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			plan_id                BIGINT NOT NULL REFERENCES plans(id),
+			status                 VARCHAR(50) NOT NULL DEFAULT 'active',
+			stripe_subscription_id VARCHAR(255),
+			stripe_customer_id     VARCHAR(255),
+			current_period_start   TIMESTAMP,
+			current_period_end     TIMESTAMP,
+			cancel_at_period_end   BOOLEAN NOT NULL DEFAULT FALSE,
+			canceled_at            TIMESTAMP,
+			trial_end              TIMESTAMP,
+			created_at             TIMESTAMP NOT NULL DEFAULT NOW(),
+			updated_at             TIMESTAMP DEFAULT NOW(),
+			CONSTRAINT chk_subscription_status CHECK (status IN ('active', 'trialing', 'past_due', 'canceled', 'incomplete', 'expired'))
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create subscriptions: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)`)
+	if err != nil {
+		return fmt.Errorf("create idx_subscriptions_user_id: %w", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS payment_events (
+			id              BIGSERIAL PRIMARY KEY,
+			stripe_event_id VARCHAR(255) NOT NULL UNIQUE,
+			event_type      VARCHAR(100) NOT NULL,
+			subscription_id BIGINT REFERENCES subscriptions(id),
+			user_id         BIGINT REFERENCES users(id),
+			payload         JSONB NOT NULL,
+			processed       BOOLEAN NOT NULL DEFAULT FALSE,
+			processed_at    TIMESTAMP,
+			error           TEXT,
+			created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create payment_events: %w", err)
+	}
+
 	return nil
 }
 
@@ -282,4 +365,45 @@ func truncateUsers(t *testing.T) {
 
 func request(req *http.Request) (*http.Response, error) {
 	return fiberApp.Test(req, 10_000)
+}
+
+func truncatePlans(t *testing.T) {
+	t.Helper()
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("truncate open: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("TRUNCATE TABLE payment_events, subscriptions, plans RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatalf("truncate plans: %v", err)
+	}
+}
+
+// createAdminToken registers a user, sets admin=true in DB, logs in, and returns the access token.
+func createAdminToken(t *testing.T) string {
+	t.Helper()
+
+	reg := registerUser(t, "Admin User", "admin@example.com", "password123")
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec("UPDATE users SET admin = true WHERE id = $1", reg.User.ID); err != nil {
+		t.Fatalf("set admin: %v", err)
+	}
+
+	login := loginUser(t, "admin@example.com", "password123")
+	return login.TokenPair.AccessToken
+}
+
+// createUserToken registers a regular user, logs in, and returns the access token and user ID.
+func createUserToken(t *testing.T, email string) (string, int64) {
+	t.Helper()
+
+	reg := registerUser(t, "Regular User", email, "password123")
+	login := loginUser(t, email, "password123")
+	return login.TokenPair.AccessToken, reg.User.ID
 }
