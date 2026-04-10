@@ -3,6 +3,7 @@ package securitypersistence
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"golang_boilerplate_module/internal/modules/security/securitydomain"
@@ -108,10 +109,38 @@ func (r *GORMSecurityRepository) BlockUser(ctx context.Context, block *securityd
 	if err := r.db.WithContext(ctx).Create(block).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
+		msg := err.Error()
+		if strings.Contains(msg, "23505") || strings.Contains(msg, "idx_unique_active_block") {
+			return securityrepo.ErrAlreadyBlocked
+		}
 		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
 	}
 
 	span.SetStatus(codes.Ok, "blocked")
+	return nil
+}
+
+func (r *GORMSecurityRepository) AutoUnblock(ctx context.Context, userID int64) error {
+	ctx, span := securityTracer.Start(ctx, "GORMSecurityRepository.AutoUnblock")
+	defer span.End()
+
+	span.SetAttributes(attribute.Int64("block.user_id", userID))
+
+	result := r.db.WithContext(ctx).
+		Model(&securitydomain.UserSecurityBlock{}).
+		Where("user_id = ? AND unblocked_at IS NULL", userID).
+		Updates(map[string]any{
+			"unblocked_at": time.Now(),
+			"unblocked_by": nil,
+		})
+
+	if result.Error != nil {
+		span.SetStatus(codes.Error, result.Error.Error())
+		span.RecordError(result.Error)
+		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+	}
+
+	span.SetStatus(codes.Ok, "auto-unblocked")
 	return nil
 }
 
