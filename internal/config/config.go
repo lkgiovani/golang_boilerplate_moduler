@@ -49,6 +49,11 @@ type JWTConfig struct {
 	Issuer        string
 }
 
+type StripeConfig struct {
+	SecretKey     string
+	WebhookSecret string
+}
+
 type Config struct {
 	App      AppConfig
 	Database DatabaseConfig
@@ -57,6 +62,7 @@ type Config struct {
 	Redis    RedisConfig
 	Email    EmailConfig
 	JWT      JWTConfig
+	Stripe   StripeConfig
 }
 
 func NewConfig() (*Config, error) {
@@ -126,6 +132,10 @@ func NewConfig() (*Config, error) {
 			AccessExpiry:  accessExpiry,
 			RefreshExpiry: refreshExpiry,
 			Issuer:        getEnvOrDefault("JWT_ISSUER", "saas-boilerplate"),
+		},
+		Stripe: StripeConfig{
+			SecretKey:     getEnvOrDefault("STRIPE_SECRET_KEY", ""),
+			WebhookSecret: getEnvOrDefault("STRIPE_WEBHOOK_SECRET", ""),
 		},
 	}, nil
 }
