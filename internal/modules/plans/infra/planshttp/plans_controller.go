@@ -16,14 +16,17 @@ import (
 
 var tracer = otel.Tracer("plans.http")
 
-// PlansController handles HTTP requests for plan management endpoints.
+// PlansController handles HTTP requests for plan management and subscription endpoints.
 type PlansController struct {
-	createPlanUC *plansusecases.CreatePlanUseCase
-	updatePlanUC *plansusecases.UpdatePlanUseCase
-	listPlansUC  *plansusecases.ListPlansUseCase
-	getPlanUC    *plansusecases.GetPlanUseCase
-	deletePlanUC *plansusecases.DeletePlanUseCase
-	logger       providers.LoggerProvider
+	createPlanUC       *plansusecases.CreatePlanUseCase
+	updatePlanUC       *plansusecases.UpdatePlanUseCase
+	listPlansUC        *plansusecases.ListPlansUseCase
+	getPlanUC          *plansusecases.GetPlanUseCase
+	deletePlanUC       *plansusecases.DeletePlanUseCase
+	subscribeUC        *plansusecases.SubscribeUseCase
+	getSubscriptionUC  *plansusecases.GetSubscriptionUseCase
+	cancelSubscriptionUC *plansusecases.CancelSubscriptionUseCase
+	logger             providers.LoggerProvider
 }
 
 // NewPlansController creates a new PlansController with all required dependencies.
@@ -33,15 +36,21 @@ func NewPlansController(
 	listPlansUC *plansusecases.ListPlansUseCase,
 	getPlanUC *plansusecases.GetPlanUseCase,
 	deletePlanUC *plansusecases.DeletePlanUseCase,
+	subscribeUC *plansusecases.SubscribeUseCase,
+	getSubscriptionUC *plansusecases.GetSubscriptionUseCase,
+	cancelSubscriptionUC *plansusecases.CancelSubscriptionUseCase,
 	logger providers.LoggerProvider,
 ) *PlansController {
 	return &PlansController{
-		createPlanUC: createPlanUC,
-		updatePlanUC: updatePlanUC,
-		listPlansUC:  listPlansUC,
-		getPlanUC:    getPlanUC,
-		deletePlanUC: deletePlanUC,
-		logger:       logger,
+		createPlanUC:         createPlanUC,
+		updatePlanUC:         updatePlanUC,
+		listPlansUC:          listPlansUC,
+		getPlanUC:            getPlanUC,
+		deletePlanUC:         deletePlanUC,
+		subscribeUC:          subscribeUC,
+		getSubscriptionUC:    getSubscriptionUC,
+		cancelSubscriptionUC: cancelSubscriptionUC,
+		logger:               logger,
 	}
 }
 
@@ -166,4 +175,89 @@ func (ctrl *PlansController) DeletePlan(c *fiber.Ctx) error {
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// subscribeRequest holds the JSON body for POST /api/subscriptions/checkout.
+type subscribeRequest struct {
+	PlanSlug   string `json:"plan_slug"`
+	SuccessURL string `json:"success_url"`
+	CancelURL  string `json:"cancel_url"`
+}
+
+// Subscribe handles POST /api/subscriptions/checkout.
+// Creates a Stripe checkout session for the authenticated user.
+func (ctrl *PlansController) Subscribe(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "PlansController.Subscribe")
+	defer span.End()
+
+	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "PlansController.Subscribe")
+
+	userID, ok := c.Locals("userID").(int64)
+	if !ok {
+		return exceptions.NewUnauthorizedException("authentication required", nil)
+	}
+	userEmail, _ := c.Locals("userEmail").(string)
+
+	var body subscribeRequest
+	if err := c.BodyParser(&body); err != nil {
+		domainErr := exceptions.NewBadRequestException("invalid request body", nil)
+		log.Warn("failed to parse request body", "error", err.Error())
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+
+	input := plansusecases.SubscribeInput{
+		UserID:     userID,
+		UserEmail:  userEmail,
+		PlanSlug:   body.PlanSlug,
+		SuccessURL: body.SuccessURL,
+		CancelURL:  body.CancelURL,
+	}
+
+	result, err := ctrl.subscribeUC.Execute(ctx, input)
+	if err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
+// GetSubscription handles GET /api/subscriptions/me.
+// Returns the authenticated user's active subscription.
+func (ctrl *PlansController) GetSubscription(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "PlansController.GetSubscription")
+	defer span.End()
+
+	userID, ok := c.Locals("userID").(int64)
+	if !ok {
+		return exceptions.NewUnauthorizedException("authentication required", nil)
+	}
+
+	sub, err := ctrl.getSubscriptionUC.Execute(ctx, userID)
+	if err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+
+	return c.Status(fiber.StatusOK).JSON(sub)
+}
+
+// CancelSubscription handles POST /api/subscriptions/cancel.
+// Cancels the authenticated user's active subscription.
+func (ctrl *PlansController) CancelSubscription(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "PlansController.CancelSubscription")
+	defer span.End()
+
+	userID, ok := c.Locals("userID").(int64)
+	if !ok {
+		return exceptions.NewUnauthorizedException("authentication required", nil)
+	}
+
+	if err := ctrl.cancelSubscriptionUC.Execute(ctx, userID); err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "subscription canceled"})
 }
