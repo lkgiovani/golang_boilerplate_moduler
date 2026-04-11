@@ -42,7 +42,7 @@ func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 	}
 
 	traceExporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint(cfg.Otel.Endpoint),
+		otlptracehttp.WithEndpointURL(cfg.Otel.Endpoint),
 		otlptracehttp.WithInsecure(),
 	)
 	if err != nil {
@@ -62,7 +62,7 @@ func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 	))
 
 	metricExporter, err := otlpmetrichttp.New(ctx,
-		otlpmetrichttp.WithEndpoint(cfg.Otel.Endpoint),
+		otlpmetrichttp.WithEndpointURL(cfg.Otel.Endpoint),
 		otlpmetrichttp.WithInsecure(),
 	)
 	if err != nil {
@@ -76,7 +76,7 @@ func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 	otel.SetMeterProvider(mp)
 
 	logExporter, err := otlploghttp.New(ctx,
-		otlploghttp.WithEndpoint(cfg.Otel.Endpoint),
+		otlploghttp.WithEndpointURL(cfg.Otel.Endpoint),
 		otlploghttp.WithInsecure(),
 	)
 	if err != nil {
