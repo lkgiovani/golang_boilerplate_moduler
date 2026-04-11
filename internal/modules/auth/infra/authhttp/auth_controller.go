@@ -19,12 +19,16 @@ var tracer = otel.Tracer("auth.http")
 
 // AuthController handles HTTP requests for authentication endpoints.
 type AuthController struct {
-	registerUC     *authusecases.RegisterUseCase
-	loginUC        *authusecases.LoginUseCase
-	refreshTokenUC *authusecases.RefreshTokenUseCase
-	logoutUC       *authusecases.LogoutUseCase
-	cfg            *config.Config
-	logger         providers.LoggerProvider
+	registerUC       *authusecases.RegisterUseCase
+	loginUC          *authusecases.LoginUseCase
+	refreshTokenUC   *authusecases.RefreshTokenUseCase
+	logoutUC         *authusecases.LogoutUseCase
+	confirmEmailUC   *authusecases.ConfirmEmailUseCase
+	forgotPasswordUC *authusecases.ForgotPasswordUseCase
+	resetPasswordUC  *authusecases.ResetPasswordUseCase
+	changePasswordUC *authusecases.ChangePasswordUseCase
+	cfg              *config.Config
+	logger           providers.LoggerProvider
 }
 
 // NewAuthController creates a new AuthController with all required dependencies.
@@ -33,16 +37,24 @@ func NewAuthController(
 	loginUC *authusecases.LoginUseCase,
 	refreshTokenUC *authusecases.RefreshTokenUseCase,
 	logoutUC *authusecases.LogoutUseCase,
+	confirmEmailUC *authusecases.ConfirmEmailUseCase,
+	forgotPasswordUC *authusecases.ForgotPasswordUseCase,
+	resetPasswordUC *authusecases.ResetPasswordUseCase,
+	changePasswordUC *authusecases.ChangePasswordUseCase,
 	cfg *config.Config,
 	logger providers.LoggerProvider,
 ) *AuthController {
 	return &AuthController{
-		registerUC:     registerUC,
-		loginUC:        loginUC,
-		refreshTokenUC: refreshTokenUC,
-		logoutUC:       logoutUC,
-		cfg:            cfg,
-		logger:         logger,
+		registerUC:       registerUC,
+		loginUC:          loginUC,
+		refreshTokenUC:   refreshTokenUC,
+		logoutUC:         logoutUC,
+		confirmEmailUC:   confirmEmailUC,
+		forgotPasswordUC: forgotPasswordUC,
+		resetPasswordUC:  resetPasswordUC,
+		changePasswordUC: changePasswordUC,
+		cfg:              cfg,
+		logger:           logger,
 	}
 }
 
@@ -65,6 +77,28 @@ type loginRequest struct {
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 	DeviceID     string `json:"device_id"`
+}
+
+// confirmEmailRequest is the body for POST /auth/confirm-email.
+type confirmEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// forgotPasswordRequest is the body for POST /auth/forgot-password.
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// resetPasswordRequest is the body for POST /auth/reset-password.
+type resetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+// changePasswordRequest is the body for PUT /auth/change-password.
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
 }
 
 // Register handles POST /auth/register.
@@ -320,6 +354,111 @@ func (ctrl *AuthController) clearAuthCookies(c *fiber.Ctx) {
 		Secure:   true,
 		SameSite: "Lax",
 	})
+}
+
+// ConfirmEmail handles POST /auth/confirm-email. Accepts the token via JSON
+// body or `?token=` query string for convenience when clicking from email.
+func (ctrl *AuthController) ConfirmEmail(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "AuthController.ConfirmEmail")
+	defer span.End()
+
+	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "AuthController.ConfirmEmail")
+
+	var req confirmEmailRequest
+	_ = c.BodyParser(&req)
+	if req.Token == "" {
+		req.Token = c.Query("token")
+	}
+
+	if err := ctrl.confirmEmailUC.Execute(ctx, authusecases.ConfirmEmailInput{Token: req.Token}); err != nil {
+		log.Warn("confirm email failed", "error", err.Error())
+		observability.RecordError(span, err)
+		return err
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "email confirmed"})
+}
+
+// ForgotPassword handles POST /auth/forgot-password. Always returns 200 to
+// prevent user enumeration.
+func (ctrl *AuthController) ForgotPassword(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "AuthController.ForgotPassword")
+	defer span.End()
+
+	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "AuthController.ForgotPassword")
+
+	var req forgotPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		log.Warn("failed to parse request body", "error", err.Error())
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+
+	if err := ctrl.forgotPasswordUC.Execute(ctx, authusecases.ForgotPasswordInput{Email: req.Email}); err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "if the email exists, a reset link has been sent",
+	})
+}
+
+// ResetPassword handles POST /auth/reset-password.
+func (ctrl *AuthController) ResetPassword(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "AuthController.ResetPassword")
+	defer span.End()
+
+	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "AuthController.ResetPassword")
+
+	var req resetPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		log.Warn("failed to parse request body", "error", err.Error())
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+
+	if err := ctrl.resetPasswordUC.Execute(ctx, authusecases.ResetPasswordInput{
+		Token:       req.Token,
+		NewPassword: req.NewPassword,
+	}); err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "password reset"})
+}
+
+// ChangePassword handles PUT /auth/change-password (authenticated).
+func (ctrl *AuthController) ChangePassword(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "AuthController.ChangePassword")
+	defer span.End()
+
+	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "AuthController.ChangePassword")
+
+	userID, ok := c.Locals("userID").(int64)
+	if !ok || userID == 0 {
+		domainErr := exceptions.NewUnauthorizedException("missing user identity", nil)
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+
+	var req changePasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		log.Warn("failed to parse request body", "error", err.Error())
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+
+	if err := ctrl.changePasswordUC.Execute(ctx, authusecases.ChangePasswordInput{
+		UserID:          userID,
+		CurrentPassword: req.CurrentPassword,
+		NewPassword:     req.NewPassword,
+	}); err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "password changed"})
 }
 
 // extractRawToken extracts the raw JWT string from the request for blacklisting.

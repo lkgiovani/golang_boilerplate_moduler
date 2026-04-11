@@ -42,11 +42,12 @@ type RegisterOutput struct {
 // RegisterUseCase handles new user registration with password hashing
 // and initial refresh token creation.
 type RegisterUseCase struct {
-	userRepo         usersrepo.UserRepository
-	refreshTokenRepo authrepo.RefreshTokenRepository
-	tokenProvider    authprovider.TokenProvider
-	cfg              *config.Config
-	logger           providers.LoggerProvider
+	userRepo           usersrepo.UserRepository
+	refreshTokenRepo   authrepo.RefreshTokenRepository
+	tokenProvider      authprovider.TokenProvider
+	verificationSender *VerificationSender
+	cfg                *config.Config
+	logger             providers.LoggerProvider
 }
 
 // NewRegisterUseCase creates a new RegisterUseCase with all required dependencies.
@@ -54,15 +55,17 @@ func NewRegisterUseCase(
 	userRepo usersrepo.UserRepository,
 	refreshTokenRepo authrepo.RefreshTokenRepository,
 	tokenProvider authprovider.TokenProvider,
+	verificationSender *VerificationSender,
 	cfg *config.Config,
 	logger providers.LoggerProvider,
 ) *RegisterUseCase {
 	return &RegisterUseCase{
-		userRepo:         userRepo,
-		refreshTokenRepo: refreshTokenRepo,
-		tokenProvider:    tokenProvider,
-		cfg:              cfg,
-		logger:           logger,
+		userRepo:           userRepo,
+		refreshTokenRepo:   refreshTokenRepo,
+		tokenProvider:      tokenProvider,
+		verificationSender: verificationSender,
+		cfg:                cfg,
+		logger:             logger,
 	}
 }
 
@@ -177,6 +180,14 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (Re
 		log.Error("failed to store refresh token", "error", err.Error())
 		observability.RecordError(span, err)
 		return RegisterOutput{}, err
+	}
+
+	// 8. Dispatch email verification (non-fatal — log and continue on failure
+	// so a broken SMTP does not prevent registration).
+	if uc.verificationSender != nil {
+		if err := uc.verificationSender.SendEmailVerification(ctx, created.ID, created.Name, created.Email); err != nil {
+			log.Warn("failed to send verification email", "error", err.Error())
+		}
 	}
 
 	log.Info("user registered successfully", "userId", created.ID)

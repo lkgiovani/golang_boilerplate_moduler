@@ -3,10 +3,10 @@ CREATE TABLE password_reset_tokens (
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     email VARCHAR(255) NOT NULL,
     token VARCHAR(255) NOT NULL UNIQUE,
-    expires_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
     used BOOLEAN NOT NULL DEFAULT FALSE,
-    used_at TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_password_reset_tokens_token ON password_reset_tokens(token);

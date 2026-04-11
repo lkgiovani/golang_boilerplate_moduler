@@ -3,10 +3,10 @@ CREATE TABLE email_verification_tokens (
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     email VARCHAR(255) NOT NULL,
     token VARCHAR(255) NOT NULL UNIQUE,
-    expires_at TIMESTAMP(6) NOT NULL,
-    verified_at TIMESTAMP(6),
+    expires_at TIMESTAMPTZ NOT NULL,
+    verified_at TIMESTAMPTZ,
     used BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_email_verification_tokens_user_id ON email_verification_tokens(user_id);

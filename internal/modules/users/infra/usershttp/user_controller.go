@@ -19,19 +19,87 @@ var tracer = otel.Tracer("users.http")
 type UserController struct {
 	createUser *usersusecases.CreateUserUseCase
 	getUser    *usersusecases.GetUserUseCase
+	getMe      *usersusecases.GetMeUseCase
+	updateMe   *usersusecases.UpdateMeUseCase
 	logger     providers.LoggerProvider
 }
 
 func NewUserController(
 	createUser *usersusecases.CreateUserUseCase,
 	getUser *usersusecases.GetUserUseCase,
+	getMe *usersusecases.GetMeUseCase,
+	updateMe *usersusecases.UpdateMeUseCase,
 	logger providers.LoggerProvider,
 ) *UserController {
 	return &UserController{
 		createUser: createUser,
 		getUser:    getUser,
+		getMe:      getMe,
+		updateMe:   updateMe,
 		logger:     logger,
 	}
+}
+
+// updateMeRequest is the body for PUT /api/users/me.
+type updateMeRequest struct {
+	Name   *string `json:"name,omitempty"`
+	ImgURL *string `json:"img_url,omitempty"`
+}
+
+// GetMe handles GET /api/users/me (authenticated).
+func (ctrl *UserController) GetMe(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "UserController.GetMe")
+	defer span.End()
+
+	userID, ok := c.Locals("userID").(int64)
+	if !ok || userID == 0 {
+		domainErr := exceptions.NewUnauthorizedException("missing user identity", nil)
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+	span.SetAttributes(attribute.Int64("user.id", userID))
+
+	user, err := ctrl.getMe.Execute(ctx, userID)
+	if err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+	return c.JSON(user)
+}
+
+// UpdateMe handles PUT /api/users/me (authenticated).
+func (ctrl *UserController) UpdateMe(c *fiber.Ctx) error {
+	ctx, span := tracer.Start(c.UserContext(), "UserController.UpdateMe")
+	defer span.End()
+
+	log := middleware.LoggerFromLocals(c, ctrl.logger).With("handler", "UserController.UpdateMe")
+
+	userID, ok := c.Locals("userID").(int64)
+	if !ok || userID == 0 {
+		domainErr := exceptions.NewUnauthorizedException("missing user identity", nil)
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+	span.SetAttributes(attribute.Int64("user.id", userID))
+
+	var req updateMeRequest
+	if err := c.BodyParser(&req); err != nil {
+		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		log.Warn("failed to parse request body", "error", err.Error())
+		observability.RecordError(span, domainErr)
+		return domainErr
+	}
+
+	updated, err := ctrl.updateMe.Execute(ctx, usersusecases.UpdateMeInput{
+		UserID: userID,
+		Name:   req.Name,
+		ImgURL: req.ImgURL,
+	})
+	if err != nil {
+		observability.RecordError(span, err)
+		return err
+	}
+	return c.JSON(updated)
 }
 
 func (ctrl *UserController) Create(c *fiber.Ctx) error {
