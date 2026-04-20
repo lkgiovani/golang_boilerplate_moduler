@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"golang_boilerplate_module/internal/config"
+	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authprovider"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -65,7 +65,7 @@ func (uc *LogoutUseCase) Execute(ctx context.Context, input LogoutInput) error {
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "Logout", "userId", input.UserID)
 
 	if input.UserID == 0 || input.TokenID == "" {
-		err := exceptions.NewBadRequestException("User ID and token ID are required", nil)
+		err := authdomain.MissingLogoutFields()
 		log.Warn("validation failed - missing user or token ID")
 		observability.RecordError(span, err)
 		return err
@@ -78,7 +78,7 @@ func (uc *LogoutUseCase) Execute(ctx context.Context, input LogoutInput) error {
 	if err := uc.cacheProvider.Set(ctx, blacklistKey, "1", remainingTTL); err != nil {
 		log.Error("failed to blacklist access token in cache", "error", err.Error(), "tokenId", input.TokenID)
 		observability.RecordError(span, err)
-		return exceptions.NewInternalException(map[string]any{"error": "failed to blacklist access token"})
+		return authdomain.FailedToBlacklistToken()
 	}
 
 	log.Debug("access token blacklisted", "tokenId", input.TokenID, "ttl", remainingTTL.String())

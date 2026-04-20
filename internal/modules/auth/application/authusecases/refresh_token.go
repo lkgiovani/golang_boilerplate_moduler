@@ -10,7 +10,6 @@ import (
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authrepo"
 	"golang_boilerplate_module/internal/modules/auth/infra/authproviders"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -69,7 +68,7 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 
 	// 1. Validate refresh token JWT and extract claims
 	if input.RefreshToken == "" {
-		err := exceptions.NewBadRequestException("Refresh token is required", nil)
+		err := authdomain.MissingRefreshToken()
 		log.Warn("validation failed - missing refresh token")
 		observability.RecordError(span, err)
 		return RefreshTokenOutput{}, err
@@ -77,7 +76,7 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 
 	userID, _, err := uc.tokenProvider.ValidateRefreshToken(input.RefreshToken)
 	if err != nil {
-		authErr := exceptions.NewUnauthorizedException("invalid refresh token", nil)
+		authErr := authdomain.InvalidRefreshToken()
 		log.Warn("invalid refresh token JWT", "error", err.Error())
 		observability.RecordError(span, authErr)
 		return RefreshTokenOutput{}, authErr
@@ -89,7 +88,7 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 	tokenHash := authproviders.HashToken(input.RefreshToken)
 	storedToken, err := uc.refreshTokenRepo.GetByTokenHash(ctx, tokenHash)
 	if err != nil || storedToken == nil {
-		authErr := exceptions.NewUnauthorizedException("refresh token not found", nil)
+		authErr := authdomain.RefreshTokenNotFound()
 		log.Warn("refresh token not found in database")
 		observability.RecordError(span, authErr)
 		return RefreshTokenOutput{}, authErr
@@ -99,7 +98,7 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 
 	// 3. Check if token is already revoked
 	if storedToken.RevokedAt != nil {
-		authErr := exceptions.NewUnauthorizedException("refresh token has been revoked", nil)
+		authErr := authdomain.RefreshTokenRevoked()
 		log.Warn("attempt to use revoked refresh token", "tokenId", storedToken.ID.String())
 		observability.RecordError(span, authErr)
 		return RefreshTokenOutput{}, authErr
@@ -118,7 +117,7 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 			log.Error("failed to revoke token family after theft detection", "error", err.Error())
 		}
 
-		authErr := exceptions.NewUnauthorizedException("token reuse detected", nil)
+		authErr := authdomain.TokenReuseDetected()
 		observability.RecordError(span, authErr)
 		return RefreshTokenOutput{}, authErr
 	}
@@ -127,13 +126,13 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 	if err := uc.refreshTokenRepo.MarkUsed(ctx, storedToken.ID); err != nil {
 		log.Error("failed to mark refresh token as used", "error", err.Error())
 		observability.RecordError(span, err)
-		return RefreshTokenOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to rotate token"})
+		return RefreshTokenOutput{}, authdomain.FailedToRotateToken()
 	}
 
 	// 6. Get user info for new token claims
 	user, err := uc.userRepo.GetByID(ctx, userID)
 	if err != nil || user == nil {
-		authErr := exceptions.NewUnauthorizedException("user not found", nil)
+		authErr := authdomain.UserNotFoundForAuth()
 		log.Warn("user not found during token refresh", "userId", userID)
 		observability.RecordError(span, authErr)
 		return RefreshTokenOutput{}, authErr
@@ -149,7 +148,7 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 	if err != nil {
 		log.Error("failed to generate new token pair", "error", err.Error())
 		observability.RecordError(span, err)
-		return RefreshTokenOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to generate tokens"})
+		return RefreshTokenOutput{}, authdomain.FailedToGenerateTokens()
 	}
 
 	// 8. Extract JTI from new refresh token
@@ -157,7 +156,7 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, input RefreshTokenIn
 	if err != nil {
 		log.Error("failed to extract new refresh token JTI", "error", err.Error())
 		observability.RecordError(span, err)
-		return RefreshTokenOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to extract token claims"})
+		return RefreshTokenOutput{}, authdomain.FailedToExtractTokenClaims()
 	}
 
 	// 9. Create new refresh token in PG with same family, linked to old token

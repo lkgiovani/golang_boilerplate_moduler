@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authrepo"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -49,12 +49,12 @@ func (uc *ResetPasswordUseCase) Execute(ctx context.Context, input ResetPassword
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "ResetPassword")
 
 	if input.Token == "" || input.NewPassword == "" {
-		err := exceptions.NewBadRequestException("Token and new password are required", nil)
+		err := authdomain.MissingResetFields()
 		observability.RecordError(span, err)
 		return err
 	}
 	if len(input.NewPassword) < 8 {
-		err := exceptions.NewBadRequestException("Password must be at least 8 characters", nil)
+		err := authdomain.PasswordTooShort()
 		observability.RecordError(span, err)
 		return err
 	}
@@ -63,16 +63,16 @@ func (uc *ResetPasswordUseCase) Execute(ctx context.Context, input ResetPassword
 	if err != nil {
 		log.Warn("reset token not found")
 		observability.RecordError(span, err)
-		return exceptions.NewNotFoundException("Invalid or expired token", nil)
+		return authdomain.InvalidOrExpiredVerificationToken()
 	}
 
 	if record.Used {
-		err := exceptions.NewUnprocessableException("Token already used", nil)
+		err := authdomain.TokenAlreadyUsed()
 		observability.RecordError(span, err)
 		return err
 	}
 	if time.Now().After(record.ExpiresAt) {
-		err := exceptions.NewUnprocessableException("Token has expired", nil)
+		err := authdomain.TokenExpired()
 		observability.RecordError(span, err)
 		return err
 	}
@@ -83,7 +83,7 @@ func (uc *ResetPasswordUseCase) Execute(ctx context.Context, input ResetPassword
 	if err != nil {
 		log.Error("failed to hash password", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewInternalException(map[string]any{"error": "failed to hash password"})
+		return authdomain.FailedToHashPassword()
 	}
 
 	if err := uc.verificationRepo.MarkPasswordResetUsed(ctx, record.ID); err != nil {

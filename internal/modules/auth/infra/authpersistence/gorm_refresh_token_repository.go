@@ -7,7 +7,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -28,6 +28,14 @@ func NewGORMRefreshTokenRepository(db *gorm.DB) authrepo.RefreshTokenRepository 
 	return &GORMRefreshTokenRepository{db: db}
 }
 
+// wrapInternal wraps a repository error as a Reportable EINTERNAL domain error
+// preserving the underlying cause for the Unwrap chain.
+func wrapRefreshTokenInternal(err error, op string) *errs.Error {
+	e := errs.Wrap(errs.EINTERNAL, err, "refresh_token_repository.%s failed", op)
+	e.Reportable = true
+	return e
+}
+
 func (r *GORMRefreshTokenRepository) Create(ctx context.Context, token *authdomain.RefreshToken) error {
 	ctx, span := refreshTokenTracer.Start(ctx, "GORMRefreshTokenRepository.Create")
 	defer span.End()
@@ -40,7 +48,7 @@ func (r *GORMRefreshTokenRepository) Create(ctx context.Context, token *authdoma
 	if err := r.db.WithContext(ctx).Create(token).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return wrapRefreshTokenInternal(err, "Create")
 	}
 
 	span.SetStatus(codes.Ok, "created")
@@ -57,12 +65,12 @@ func (r *GORMRefreshTokenRepository) GetByTokenHash(ctx context.Context, tokenHa
 	err := r.db.WithContext(ctx).Where("token_hash = ?", tokenHash).First(&token).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Refresh token not found", nil)
+		return nil, authdomain.RefreshTokenStorageNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapRefreshTokenInternal(err, "GetByTokenHash")
 	}
 
 	span.SetStatus(codes.Ok, "found")
@@ -79,12 +87,12 @@ func (r *GORMRefreshTokenRepository) GetByJTI(ctx context.Context, jti string) (
 	err := r.db.WithContext(ctx).Where("jti = ?", jti).First(&token).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Refresh token not found", nil)
+		return nil, authdomain.RefreshTokenStorageNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapRefreshTokenInternal(err, "GetByJTI")
 	}
 
 	span.SetStatus(codes.Ok, "found")
@@ -106,7 +114,7 @@ func (r *GORMRefreshTokenRepository) MarkUsed(ctx context.Context, id uuid.UUID)
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapRefreshTokenInternal(result.Error, "MarkUsed")
 	}
 
 	span.SetStatus(codes.Ok, "marked used")
@@ -128,7 +136,7 @@ func (r *GORMRefreshTokenRepository) RevokeByFamilyID(ctx context.Context, famil
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapRefreshTokenInternal(result.Error, "RevokeByFamilyID")
 	}
 
 	span.SetAttributes(attribute.Int64("tokens.revoked", result.RowsAffected))
@@ -151,7 +159,7 @@ func (r *GORMRefreshTokenRepository) RevokeByUserID(ctx context.Context, userID 
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapRefreshTokenInternal(result.Error, "RevokeByUserID")
 	}
 
 	span.SetAttributes(attribute.Int64("tokens.revoked", result.RowsAffected))
@@ -173,7 +181,7 @@ func (r *GORMRefreshTokenRepository) GetActiveByUserID(ctx context.Context, user
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapRefreshTokenInternal(err, "GetActiveByUserID")
 	}
 
 	span.SetAttributes(attribute.Int("tokens.count", len(tokens)))
@@ -192,7 +200,7 @@ func (r *GORMRefreshTokenRepository) DeleteExpired(ctx context.Context) error {
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapRefreshTokenInternal(result.Error, "DeleteExpired")
 	}
 
 	span.SetAttributes(attribute.Int64("tokens.deleted", result.RowsAffected))

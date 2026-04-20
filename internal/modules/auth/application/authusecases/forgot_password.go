@@ -3,8 +3,8 @@ package authusecases
 import (
 	"context"
 
+	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -46,7 +46,7 @@ func (uc *ForgotPasswordUseCase) Execute(ctx context.Context, input ForgotPasswo
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "ForgotPassword", "email", input.Email)
 
 	if input.Email == "" {
-		err := exceptions.NewBadRequestException("Email is required", nil)
+		err := authdomain.MissingForgotEmail()
 		observability.RecordError(span, err)
 		return err
 	}

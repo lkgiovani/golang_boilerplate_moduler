@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authrepo"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -47,7 +47,7 @@ func (uc *ConfirmEmailUseCase) Execute(ctx context.Context, input ConfirmEmailIn
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "ConfirmEmail")
 
 	if input.Token == "" {
-		err := exceptions.NewBadRequestException("Token is required", nil)
+		err := authdomain.MissingToken()
 		observability.RecordError(span, err)
 		return err
 	}
@@ -56,18 +56,18 @@ func (uc *ConfirmEmailUseCase) Execute(ctx context.Context, input ConfirmEmailIn
 	if err != nil {
 		log.Warn("verification token not found")
 		observability.RecordError(span, err)
-		return exceptions.NewNotFoundException("Invalid or expired token", nil)
+		return authdomain.InvalidOrExpiredVerificationToken()
 	}
 
 	if record.Used {
-		err := exceptions.NewUnprocessableException("Token already used", nil)
+		err := authdomain.TokenAlreadyUsed()
 		log.Warn("token already used", "tokenId", record.ID)
 		observability.RecordError(span, err)
 		return err
 	}
 
 	if time.Now().After(record.ExpiresAt) {
-		err := exceptions.NewUnprocessableException("Token has expired", nil)
+		err := authdomain.TokenExpired()
 		log.Warn("token expired", "tokenId", record.ID)
 		observability.RecordError(span, err)
 		return err

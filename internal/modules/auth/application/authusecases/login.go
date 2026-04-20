@@ -11,7 +11,6 @@ import (
 	"golang_boilerplate_module/internal/modules/auth/infra/authproviders"
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -74,7 +73,7 @@ func (uc *LoginUseCase) Execute(ctx context.Context, input LoginInput) (LoginOut
 
 	// 1. Validate required fields
 	if input.Email == "" || input.Password == "" {
-		err := exceptions.NewBadRequestException("Email and password are required", nil)
+		err := authdomain.MissingCredentials()
 		log.Warn("validation failed - missing required fields")
 		observability.RecordError(span, err)
 		return LoginOutput{}, err
@@ -83,17 +82,17 @@ func (uc *LoginUseCase) Execute(ctx context.Context, input LoginInput) (LoginOut
 	// 2. Get user by email
 	user, err := uc.userRepo.GetByEmail(ctx, input.Email)
 	if err != nil || user == nil {
-		err := exceptions.NewUnauthorizedException("invalid credentials", nil)
+		authErr := authdomain.InvalidCredentials()
 		log.Warn("user not found by email")
-		observability.RecordError(span, err)
-		return LoginOutput{}, err
+		observability.RecordError(span, authErr)
+		return LoginOutput{}, authErr
 	}
 
 	span.SetAttributes(attribute.Int64("user.id", user.ID))
 
 	// 3. Check account is active
 	if !user.Active {
-		err := exceptions.NewUnauthorizedException("account disabled", nil)
+		err := authdomain.AccountDisabled()
 		log.Warn("login attempt on disabled account", "userId", user.ID)
 		observability.RecordError(span, err)
 		return LoginOutput{}, err
@@ -101,7 +100,7 @@ func (uc *LoginUseCase) Execute(ctx context.Context, input LoginInput) (LoginOut
 
 	// 4. Check password is set (OAuth-only accounts cannot login with password)
 	if user.Password == nil {
-		err := exceptions.NewUnauthorizedException("invalid credentials", nil)
+		err := authdomain.InvalidCredentials()
 		log.Warn("login attempt on account without password (OAuth-only)", "userId", user.ID)
 		observability.RecordError(span, err)
 		return LoginOutput{}, err
@@ -109,7 +108,7 @@ func (uc *LoginUseCase) Execute(ctx context.Context, input LoginInput) (LoginOut
 
 	// 5. Verify password with bcrypt
 	if err := bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(input.Password)); err != nil {
-		authErr := exceptions.NewUnauthorizedException("invalid credentials", nil)
+		authErr := authdomain.InvalidCredentials()
 		log.Warn("invalid password attempt", "userId", user.ID)
 		observability.RecordError(span, authErr)
 		return LoginOutput{}, authErr
@@ -125,7 +124,7 @@ func (uc *LoginUseCase) Execute(ctx context.Context, input LoginInput) (LoginOut
 	if err != nil {
 		log.Error("failed to generate token pair", "error", err.Error())
 		observability.RecordError(span, err)
-		return LoginOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to generate tokens"})
+		return LoginOutput{}, authdomain.FailedToGenerateTokens()
 	}
 
 	// 7. Create refresh token in PG (new family for each login session)
@@ -138,7 +137,7 @@ func (uc *LoginUseCase) Execute(ctx context.Context, input LoginInput) (LoginOut
 	if err != nil {
 		log.Error("failed to extract refresh token JTI", "error", err.Error())
 		observability.RecordError(span, err)
-		return LoginOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to extract token claims"})
+		return LoginOutput{}, authdomain.FailedToExtractTokenClaims()
 	}
 
 	refreshToken := &authdomain.RefreshToken{

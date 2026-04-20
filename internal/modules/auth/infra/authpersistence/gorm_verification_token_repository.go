@@ -7,7 +7,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,6 +27,12 @@ func NewGORMVerificationTokenRepository(db *gorm.DB) authrepo.VerificationTokenR
 	return &GORMVerificationTokenRepository{db: db}
 }
 
+func wrapVerificationInternal(err error, op string) *errs.Error {
+	e := errs.Wrap(errs.EINTERNAL, err, "verification_token_repository.%s failed", op)
+	e.Reportable = true
+	return e
+}
+
 func (r *GORMVerificationTokenRepository) CreateEmailToken(ctx context.Context, token *authdomain.EmailVerificationToken) error {
 	ctx, span := verificationTracer.Start(ctx, "GORMVerificationTokenRepository.CreateEmailToken")
 	defer span.End()
@@ -39,7 +45,7 @@ func (r *GORMVerificationTokenRepository) CreateEmailToken(ctx context.Context, 
 	if err := r.db.WithContext(ctx).Create(token).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return wrapVerificationInternal(err, "CreateEmailToken")
 	}
 
 	span.SetStatus(codes.Ok, "created")
@@ -56,12 +62,12 @@ func (r *GORMVerificationTokenRepository) GetEmailTokenByToken(ctx context.Conte
 	err := r.db.WithContext(ctx).Where("token = ?", token).First(&t).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Email verification token not found", nil)
+		return nil, authdomain.EmailVerificationTokenNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapVerificationInternal(err, "GetEmailTokenByToken")
 	}
 
 	span.SetStatus(codes.Ok, "found")
@@ -83,7 +89,7 @@ func (r *GORMVerificationTokenRepository) MarkEmailTokenUsed(ctx context.Context
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapVerificationInternal(result.Error, "MarkEmailTokenUsed")
 	}
 
 	span.SetStatus(codes.Ok, "marked used")
@@ -102,7 +108,7 @@ func (r *GORMVerificationTokenRepository) CreatePasswordResetToken(ctx context.C
 	if err := r.db.WithContext(ctx).Create(token).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return wrapVerificationInternal(err, "CreatePasswordResetToken")
 	}
 
 	span.SetStatus(codes.Ok, "created")
@@ -119,12 +125,12 @@ func (r *GORMVerificationTokenRepository) GetPasswordResetByToken(ctx context.Co
 	err := r.db.WithContext(ctx).Where("token = ?", token).First(&t).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Password reset token not found", nil)
+		return nil, authdomain.PasswordResetTokenNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapVerificationInternal(err, "GetPasswordResetByToken")
 	}
 
 	span.SetStatus(codes.Ok, "found")
@@ -146,7 +152,7 @@ func (r *GORMVerificationTokenRepository) MarkPasswordResetUsed(ctx context.Cont
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapVerificationInternal(result.Error, "MarkPasswordResetUsed")
 	}
 
 	span.SetStatus(codes.Ok, "marked used")

@@ -5,7 +5,7 @@ import (
 
 	"golang_boilerplate_module/internal/config"
 	"golang_boilerplate_module/internal/modules/auth/application/authusecases"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/http/middleware"
 	"golang_boilerplate_module/internal/shared/infra/observability"
@@ -102,8 +102,6 @@ type changePasswordRequest struct {
 }
 
 // Register handles POST /auth/register.
-// Parses the request body, extracts device info, and delegates to RegisterUseCase.
-// Returns 201 with user + token pair (or sets cookies in cookie mode).
 func (ctrl *AuthController) Register(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "AuthController.Register")
 	defer span.End()
@@ -112,7 +110,7 @@ func (ctrl *AuthController) Register(c *fiber.Ctx) error {
 
 	var req registerRequest
 	if err := c.BodyParser(&req); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := authdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -146,8 +144,6 @@ func (ctrl *AuthController) Register(c *fiber.Ctx) error {
 }
 
 // Login handles POST /auth/login.
-// Parses credentials, extracts device info, and delegates to LoginUseCase.
-// Returns 200 with user + token pair (or sets cookies in cookie mode).
 func (ctrl *AuthController) Login(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "AuthController.Login")
 	defer span.End()
@@ -156,7 +152,7 @@ func (ctrl *AuthController) Login(c *fiber.Ctx) error {
 
 	var req loginRequest
 	if err := c.BodyParser(&req); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := authdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -189,8 +185,6 @@ func (ctrl *AuthController) Login(c *fiber.Ctx) error {
 }
 
 // RefreshToken handles POST /auth/refresh.
-// Parses the refresh token from body, extracts device info, and delegates
-// to RefreshTokenUseCase. Returns 200 with new token pair.
 func (ctrl *AuthController) RefreshToken(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "AuthController.RefreshToken")
 	defer span.End()
@@ -199,7 +193,7 @@ func (ctrl *AuthController) RefreshToken(c *fiber.Ctx) error {
 
 	var req refreshRequest
 	if err := c.BodyParser(&req); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := authdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -235,8 +229,6 @@ func (ctrl *AuthController) RefreshToken(c *fiber.Ctx) error {
 }
 
 // Logout handles POST /auth/logout.
-// Reads userID and tokenID from Locals (set by AuthMiddleware), extracts
-// the raw access token, and delegates to LogoutUseCase. Clears cookies.
 func (ctrl *AuthController) Logout(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "AuthController.Logout")
 	defer span.End()
@@ -245,7 +237,7 @@ func (ctrl *AuthController) Logout(c *fiber.Ctx) error {
 
 	userID, ok := c.Locals("userID").(int64)
 	if !ok || userID == 0 {
-		domainErr := exceptions.NewUnauthorizedException("missing user identity", nil)
+		domainErr := authdomain.MissingUserIdentity()
 		log.Warn("userID not found in Locals")
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -253,7 +245,7 @@ func (ctrl *AuthController) Logout(c *fiber.Ctx) error {
 
 	tokenID, ok := c.Locals("tokenID").(string)
 	if !ok || tokenID == "" {
-		domainErr := exceptions.NewUnauthorizedException("missing token identity", nil)
+		domainErr := authdomain.MissingTokenIdentity()
 		log.Warn("tokenID not found in Locals")
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -330,8 +322,7 @@ func (ctrl *AuthController) setAuthCookies(c *fiber.Ctx, accessToken, refreshTok
 	})
 }
 
-// clearAuthCookies expires auth cookies by setting MaxAge to 0 and using
-// a time in the past.
+// clearAuthCookies expires auth cookies.
 func (ctrl *AuthController) clearAuthCookies(c *fiber.Ctx) {
 	c.Cookie(&fiber.Cookie{
 		Name:     "access_token",
@@ -356,8 +347,7 @@ func (ctrl *AuthController) clearAuthCookies(c *fiber.Ctx) {
 	})
 }
 
-// ConfirmEmail handles POST /auth/confirm-email. Accepts the token via JSON
-// body or `?token=` query string for convenience when clicking from email.
+// ConfirmEmail handles POST /auth/confirm-email.
 func (ctrl *AuthController) ConfirmEmail(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "AuthController.ConfirmEmail")
 	defer span.End()
@@ -378,8 +368,7 @@ func (ctrl *AuthController) ConfirmEmail(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "email confirmed"})
 }
 
-// ForgotPassword handles POST /auth/forgot-password. Always returns 200 to
-// prevent user enumeration.
+// ForgotPassword handles POST /auth/forgot-password.
 func (ctrl *AuthController) ForgotPassword(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "AuthController.ForgotPassword")
 	defer span.End()
@@ -388,7 +377,7 @@ func (ctrl *AuthController) ForgotPassword(c *fiber.Ctx) error {
 
 	var req forgotPasswordRequest
 	if err := c.BodyParser(&req); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := authdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -412,7 +401,7 @@ func (ctrl *AuthController) ResetPassword(c *fiber.Ctx) error {
 
 	var req resetPasswordRequest
 	if err := c.BodyParser(&req); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := authdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -437,14 +426,14 @@ func (ctrl *AuthController) ChangePassword(c *fiber.Ctx) error {
 
 	userID, ok := c.Locals("userID").(int64)
 	if !ok || userID == 0 {
-		domainErr := exceptions.NewUnauthorizedException("missing user identity", nil)
+		domainErr := authdomain.MissingUserIdentity()
 		observability.RecordError(span, domainErr)
 		return domainErr
 	}
 
 	var req changePasswordRequest
 	if err := c.BodyParser(&req); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := authdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr

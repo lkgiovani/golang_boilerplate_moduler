@@ -11,7 +11,6 @@ import (
 	"golang_boilerplate_module/internal/modules/auth/infra/authproviders"
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -35,8 +34,8 @@ type RegisterInput struct {
 
 // RegisterOutput holds the result of a successful registration.
 type RegisterOutput struct {
-	User      usersdomain.User      `json:"user"`
-	TokenPair authdomain.TokenPair  `json:"token_pair"`
+	User      usersdomain.User     `json:"user"`
+	TokenPair authdomain.TokenPair `json:"token_pair"`
 }
 
 // RegisterUseCase handles new user registration with password hashing
@@ -81,14 +80,14 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (Re
 
 	// 1. Validate required fields
 	if input.Name == "" || input.Email == "" || input.Password == "" {
-		err := exceptions.NewBadRequestException("Name, email and password are required", nil)
+		err := authdomain.MissingRegistrationFields()
 		log.Warn("validation failed - missing required fields")
 		observability.RecordError(span, err)
 		return RegisterOutput{}, err
 	}
 
 	if len(input.Password) < 8 {
-		err := exceptions.NewBadRequestException("Password must be at least 8 characters", nil)
+		err := authdomain.PasswordTooShort()
 		log.Warn("validation failed - password too short")
 		observability.RecordError(span, err)
 		return RegisterOutput{}, err
@@ -97,10 +96,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (Re
 	// 2. Check email uniqueness
 	existing, _ := uc.userRepo.GetByEmail(ctx, input.Email)
 	if existing != nil {
-		err := exceptions.NewUnprocessableException(
-			"Email already in use",
-			map[string]any{"email": input.Email},
-		)
+		err := usersdomain.EmailTaken(input.Email)
 		log.Warn("email already in use", "email", input.Email)
 		observability.RecordError(span, err)
 		return RegisterOutput{}, err
@@ -111,7 +107,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (Re
 	if err != nil {
 		log.Error("failed to hash password", "error", err.Error())
 		observability.RecordError(span, err)
-		return RegisterOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to hash password"})
+		return RegisterOutput{}, authdomain.FailedToHashPassword()
 	}
 	hashedPassword := string(hashedBytes)
 
@@ -144,7 +140,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (Re
 	if err != nil {
 		log.Error("failed to generate token pair", "error", err.Error())
 		observability.RecordError(span, err)
-		return RegisterOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to generate tokens"})
+		return RegisterOutput{}, authdomain.FailedToGenerateTokens()
 	}
 
 	// 6. Create refresh token in PG with family tracking
@@ -158,7 +154,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (Re
 	if err != nil {
 		log.Error("failed to extract refresh token JTI", "error", err.Error())
 		observability.RecordError(span, err)
-		return RegisterOutput{}, exceptions.NewInternalException(map[string]any{"error": "failed to extract token claims"})
+		return RegisterOutput{}, authdomain.FailedToExtractTokenClaims()
 	}
 
 	refreshToken := &authdomain.RefreshToken{

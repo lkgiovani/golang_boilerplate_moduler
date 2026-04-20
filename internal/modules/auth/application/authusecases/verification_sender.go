@@ -10,7 +10,6 @@ import (
 	"golang_boilerplate_module/internal/config"
 	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -61,7 +60,7 @@ func (s *VerificationSender) SendEmailVerification(ctx context.Context, userID i
 	if err != nil {
 		log.Error("failed to generate verification token", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewInternalException(map[string]any{"error": "failed to generate token"})
+		return authdomain.FailedToGenerateVerificationToken()
 	}
 
 	record := &authdomain.EmailVerificationToken{
@@ -90,7 +89,7 @@ func (s *VerificationSender) SendEmailVerification(ctx context.Context, userID i
 	if err := s.emailProvider.Send(ctx, msg); err != nil {
 		log.Error("failed to send confirmation email", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewInternalException(map[string]any{"error": "failed to send confirmation email"})
+		return authdomain.FailedToSendVerificationEmail()
 	}
 
 	log.Info("verification email sent", "userId", userID)
@@ -110,7 +109,7 @@ func (s *VerificationSender) SendPasswordReset(ctx context.Context, userID int64
 	if err != nil {
 		log.Error("failed to generate reset token", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewInternalException(map[string]any{"error": "failed to generate token"})
+		return authdomain.FailedToGenerateResetToken()
 	}
 
 	record := &authdomain.PasswordResetToken{
@@ -139,7 +138,7 @@ func (s *VerificationSender) SendPasswordReset(ctx context.Context, userID int64
 	if err := s.emailProvider.Send(ctx, msg); err != nil {
 		log.Error("failed to send reset email", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewInternalException(map[string]any{"error": "failed to send reset email"})
+		return authdomain.FailedToSendResetEmail()
 	}
 
 	log.Info("password reset email sent", "userId", userID)

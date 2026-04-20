@@ -3,8 +3,8 @@ package authhttp
 import (
 	"strings"
 
+	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/auth/authdomain/authprovider"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,31 +32,28 @@ func NewAuthMiddleware(
 }
 
 // Required returns a Fiber handler that enforces authentication.
-// It extracts the JWT from the Authorization header or access_token cookie,
-// validates it, checks the Redis blacklist, and sets user claims in Locals.
-// Returns 401 if no token is found, token is invalid, or token is blacklisted.
 func (m *AuthMiddleware) Required() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := m.extractToken(c)
 		if token == "" {
-			return exceptions.NewUnauthorizedException("missing authentication token", nil)
+			return authdomain.MissingAuthToken()
 		}
 
 		claims, err := m.tokenProvider.ValidateAccessToken(token)
 		if err != nil {
 			m.logger.Warn("invalid access token", "error", err.Error())
-			return exceptions.NewUnauthorizedException("invalid or expired token", nil)
+			return authdomain.InvalidOrExpiredAuthToken()
 		}
 
 		// Check Redis blacklist
 		blacklisted, err := m.cacheProvider.Exists(c.UserContext(), "blacklist:"+claims.TokenID)
 		if err != nil {
 			m.logger.Error("failed to check token blacklist", "error", err.Error(), "tokenId", claims.TokenID)
-			return exceptions.NewInternalException(map[string]any{"error": "failed to check token blacklist"})
+			return authdomain.FailedToCheckBlacklist()
 		}
 		if blacklisted {
 			m.logger.Warn("blacklisted token used", "tokenId", claims.TokenID, "userId", claims.UserID)
-			return exceptions.NewUnauthorizedException("token has been revoked", nil)
+			return authdomain.TokenRevoked()
 		}
 
 		// Set user claims in Locals for downstream handlers
@@ -70,8 +67,7 @@ func (m *AuthMiddleware) Required() fiber.Handler {
 }
 
 // Optional returns a Fiber handler that attempts authentication but continues
-// even if no token is found. If a token is present, it is validated and claims
-// are set in Locals. Invalid or blacklisted tokens are silently ignored.
+// even if no token is found.
 func (m *AuthMiddleware) Optional() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := m.extractToken(c)

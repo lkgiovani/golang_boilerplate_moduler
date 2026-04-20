@@ -3,8 +3,8 @@ package authusecases
 import (
 	"context"
 
+	"golang_boilerplate_module/internal/modules/auth/authdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -43,12 +43,12 @@ func (uc *ChangePasswordUseCase) Execute(ctx context.Context, input ChangePasswo
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "ChangePassword", "userId", input.UserID)
 
 	if input.CurrentPassword == "" || input.NewPassword == "" {
-		err := exceptions.NewBadRequestException("Current and new password are required", nil)
+		err := authdomain.MissingPasswordFields()
 		observability.RecordError(span, err)
 		return err
 	}
 	if len(input.NewPassword) < 8 {
-		err := exceptions.NewBadRequestException("New password must be at least 8 characters", nil)
+		err := authdomain.NewPasswordTooShort()
 		observability.RecordError(span, err)
 		return err
 	}
@@ -56,16 +56,16 @@ func (uc *ChangePasswordUseCase) Execute(ctx context.Context, input ChangePasswo
 	user, err := uc.userRepo.GetByID(ctx, input.UserID)
 	if err != nil || user == nil {
 		observability.RecordError(span, err)
-		return exceptions.NewNotFoundException("User not found", nil)
+		return authdomain.UserNotFound()
 	}
 	if user.Password == nil {
-		err := exceptions.NewUnprocessableException("User has no local password", nil)
+		err := authdomain.NoLocalPassword()
 		observability.RecordError(span, err)
 		return err
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(input.CurrentPassword)) != nil {
-		err := exceptions.NewUnauthorizedException("Current password is incorrect", nil)
+		err := authdomain.CurrentPasswordIncorrect()
 		log.Warn("invalid current password")
 		observability.RecordError(span, err)
 		return err
@@ -75,7 +75,7 @@ func (uc *ChangePasswordUseCase) Execute(ctx context.Context, input ChangePasswo
 	if err != nil {
 		log.Error("failed to hash password", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewInternalException(map[string]any{"error": "failed to hash password"})
+		return authdomain.FailedToHashPassword()
 	}
 
 	if _, err := uc.userRepo.UpdateByID(ctx, input.UserID, map[string]any{
