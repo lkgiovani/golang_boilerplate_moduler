@@ -2,10 +2,9 @@ package repositories
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/infra/persistence"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -40,7 +39,7 @@ func (r *GORMGenericRepository[T, ID]) Add(ctx context.Context, entity *T) (*T, 
 	if err := r.db.WithContext(ctx).Create(entity).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, persistence.FromGORM(err, r.entityName)
 	}
 
 	span.SetStatus(codes.Ok, "inserted")
@@ -57,15 +56,10 @@ func (r *GORMGenericRepository[T, ID]) GetByID(ctx context.Context, id ID) (*T, 
 	)
 
 	var entity T
-	err := r.db.WithContext(ctx).First(&entity, "id = ?", id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("", nil)
-	}
-	if err != nil {
+	if err := r.db.WithContext(ctx).First(&entity, "id = ?", id).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, persistence.FromGORM(err, r.entityName)
 	}
 
 	span.SetStatus(codes.Ok, "found")
@@ -83,18 +77,14 @@ func (r *GORMGenericRepository[T, ID]) UpdateByID(ctx context.Context, id ID, up
 
 	var entity T
 	if err := r.db.WithContext(ctx).First(&entity, "id = ?", id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			span.SetStatus(codes.Error, "not found")
-			return nil, exceptions.NewNotFoundException("", nil)
-		}
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, persistence.FromGORM(err, r.entityName)
 	}
 	if err := r.db.WithContext(ctx).Model(&entity).Updates(updates).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, persistence.FromGORM(err, r.entityName)
 	}
 
 	span.SetStatus(codes.Ok, "updated")
@@ -114,7 +104,7 @@ func (r *GORMGenericRepository[T, ID]) DeleteByID(ctx context.Context, id ID) er
 	if err := r.db.WithContext(ctx).Delete(&entity, "id = ?", id).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return persistence.FromGORM(err, r.entityName)
 	}
 
 	span.SetStatus(codes.Ok, "deleted")
@@ -134,7 +124,7 @@ func (r *GORMGenericRepository[T, ID]) DeleteAll(ctx context.Context) error {
 	if err := r.db.WithContext(ctx).Where("1 = 1").Delete(&entity).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return persistence.FromGORM(err, r.entityName)
 	}
 
 	span.SetStatus(codes.Ok, "deleted all")

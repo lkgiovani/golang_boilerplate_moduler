@@ -2,9 +2,8 @@ package observability
 
 import (
 	"context"
-	"errors"
 
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -12,43 +11,38 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-var domainToHTTPStatus = map[exceptions.ExceptionCode]int{
-	exceptions.CodeBadRequest:         400,
-	exceptions.CodeUnauthorized:       401,
-	exceptions.CodeForbidden:          403,
-	exceptions.CodeNotFound:           404,
-	exceptions.CodeUnprocessable:      422,
-	exceptions.CodeInternal:           500,
-	exceptions.CodeServiceUnavailable: 503,
-}
-
+// RecordError records an error on the given span with standard attributes
+// derived from the errs.Code. Unknown errors are recorded as EINTERNAL/500.
+//
+// Attributes set:
+//   http.response.status_code — from errs.HTTPStatus(code)
+//   error.type                 — the lowercase string value of the code
+//
+// This function is the single integration point between domain errors
+// and OTel. It intentionally does NOT read Metadata (T-8-02) and does NOT
+// log the Cause chain — only the top-level Message drives span.SetStatus.
 func RecordError(span oteltrace.Span, err error) {
 	if err == nil || !span.IsRecording() {
 		return
 	}
 
-	var domainErr *exceptions.DomainError
-	if errors.As(err, &domainErr) {
-		status, ok := domainToHTTPStatus[domainErr.Code]
-		if !ok {
-			status = 500
-		}
-		span.SetAttributes(
-			attribute.Int("http.response.status_code", status),
-			attribute.String("error.type", string(domainErr.Code)),
-		)
-		span.SetStatus(codes.Error, domainErr.Message)
-		span.RecordError(err)
-	} else {
-		span.SetAttributes(
-			attribute.Int("http.response.status_code", 500),
-			attribute.String("error.type", "INTERNAL"),
-		)
-		span.SetStatus(codes.Error, err.Error())
-		span.RecordError(err)
+	code := errs.ErrorCode(err)
+	if code == "" {
+		code = errs.EINTERNAL
 	}
+	status := errs.HTTPStatus(code)
+	msg := errs.ErrorMessage(err)
+
+	span.SetAttributes(
+		attribute.Int("http.response.status_code", status),
+		attribute.String("error.type", string(code)),
+	)
+	span.SetStatus(codes.Error, msg)
+	span.RecordError(err)
 }
 
+// LoggerWithTrace returns a logger enriched with trace and span IDs
+// from the current context. Unchanged from the pre-Phase-8 behavior.
 func LoggerWithTrace(ctx context.Context, logger providers.LoggerProvider) providers.LoggerProvider {
 	span := oteltrace.SpanFromContext(ctx)
 	if spanCtx := span.SpanContext(); spanCtx.IsValid() {
