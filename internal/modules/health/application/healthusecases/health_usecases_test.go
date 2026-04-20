@@ -7,7 +7,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/health/application/healthusecases"
 	"golang_boilerplate_module/internal/modules/health/healthdomain"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 )
 
 func TestCheckHealthUseCase_AlwaysHealthy(t *testing.T) {
@@ -67,13 +67,8 @@ func TestCheckReadinessUseCase_DatabaseUnhealthy(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unhealthy database, got nil")
 	}
-
-	var domainErr *exceptions.DomainError
-	if !errors.As(err, &domainErr) {
-		t.Fatalf("expected DomainError, got %T", err)
-	}
-	if domainErr.Code != exceptions.CodeServiceUnavailable {
-		t.Fatalf("expected SERVICE_UNAVAILABLE, got %s", domainErr.Code)
+	if got := errs.ErrorCode(err); got != errs.EUNAVAILABLE {
+		t.Fatalf("expected EUNAVAILABLE, got %s", got)
 	}
 }
 
@@ -88,15 +83,10 @@ func TestCheckReadinessUseCase_DatabasePingFalse(t *testing.T) {
 	_, err := uc.Execute(context.Background())
 
 	if err == nil {
-		t.Fatal("expected SERVICE_UNAVAILABLE when ping returns false, got nil")
+		t.Fatal("expected EUNAVAILABLE when ping returns false, got nil")
 	}
-
-	var domainErr *exceptions.DomainError
-	if !errors.As(err, &domainErr) {
-		t.Fatalf("expected DomainError, got %T", err)
-	}
-	if domainErr.Code != exceptions.CodeServiceUnavailable {
-		t.Fatalf("expected SERVICE_UNAVAILABLE, got %s", domainErr.Code)
+	if got := errs.ErrorCode(err); got != errs.EUNAVAILABLE {
+		t.Fatalf("expected EUNAVAILABLE, got %s", got)
 	}
 }
 
@@ -114,14 +104,9 @@ func TestCheckReadinessUseCase_RedisUnhealthy(t *testing.T) {
 	_, err := uc.Execute(context.Background())
 
 	if err == nil {
-		t.Fatal("expected SERVICE_UNAVAILABLE when redis is unhealthy, got nil")
+		t.Fatal("expected EUNAVAILABLE when redis is unhealthy, got nil")
 	}
-
-	var domainErr *exceptions.DomainError
-	if !errors.As(err, &domainErr) {
-		t.Fatalf("expected DomainError, got %T", err)
-	}
-	if domainErr.Code != exceptions.CodeServiceUnavailable {
-		t.Fatalf("expected SERVICE_UNAVAILABLE, got %s", domainErr.Code)
+	if got := errs.ErrorCode(err); got != errs.EUNAVAILABLE {
+		t.Fatalf("expected EUNAVAILABLE, got %s", got)
 	}
 }

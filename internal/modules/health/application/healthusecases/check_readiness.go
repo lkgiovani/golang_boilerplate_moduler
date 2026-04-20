@@ -2,10 +2,10 @@ package healthusecases
 
 import (
 	"context"
+	"errors"
 
 	"golang_boilerplate_module/internal/modules/health/healthdomain"
 	"golang_boilerplate_module/internal/modules/health/healthdomain/healthrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -21,7 +21,7 @@ type ComponentHealth struct {
 }
 
 type CheckReadinessOutput struct {
-	Status     healthdomain.HealthStatus        `json:"status"`
+	Status     healthdomain.HealthStatus  `json:"status"`
 	Components map[string]ComponentHealth `json:"components"`
 }
 
@@ -40,7 +40,7 @@ func (uc *CheckReadinessUseCase) Execute(ctx context.Context) (CheckReadinessOut
 
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "CheckReadiness")
 
-	dbPing, _ := uc.healthRepo.Ping(ctx)
+	dbPing, dbErr := uc.healthRepo.Ping(ctx)
 	redisPing := uc.healthRepo.PingRedis(ctx)
 
 	dbStatus := healthdomain.ToHealthStatus(dbPing)
@@ -57,10 +57,12 @@ func (uc *CheckReadinessUseCase) Execute(ctx context.Context) (CheckReadinessOut
 
 	for name, component := range components {
 		if component.Status == healthdomain.HealthStatusUnhealthy {
-			err := exceptions.NewServiceUnavailableException(
-				"Readiness check detected unhealthy components",
-				map[string]any{"component": name},
-			)
+			cause := dbErr
+			if name == "redis" {
+				cause = errors.New("redis ping failed")
+			}
+			err := healthdomain.DatabaseUnavailable(cause)
+			err.Metadata = map[string]any{"component": name}
 			log.Error("readiness check failed — unhealthy component",
 				"component", name,
 				"status", component.Status,
