@@ -8,7 +8,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/security/securitydomain"
 	"golang_boilerplate_module/internal/modules/security/securitydomain/securityrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -28,6 +28,12 @@ func NewGORMSecurityRepository(db *gorm.DB) securityrepo.SecurityRepository {
 	return &GORMSecurityRepository{db: db}
 }
 
+func wrapSecurityInternal(err error, op string) *errs.Error {
+	e := errs.Wrap(errs.EINTERNAL, err, "security_repository.%s failed", op)
+	e.Reportable = true
+	return e
+}
+
 func (r *GORMSecurityRepository) CreateSuspiciousActivity(ctx context.Context, activity *securitydomain.SuspiciousActivity) error {
 	ctx, span := securityTracer.Start(ctx, "GORMSecurityRepository.CreateSuspiciousActivity")
 	defer span.End()
@@ -41,7 +47,7 @@ func (r *GORMSecurityRepository) CreateSuspiciousActivity(ctx context.Context, a
 	if err := r.db.WithContext(ctx).Create(activity).Error; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return wrapSecurityInternal(err, "CreateSuspiciousActivity")
 	}
 
 	span.SetStatus(codes.Ok, "created")
@@ -63,7 +69,7 @@ func (r *GORMSecurityRepository) GetRecentByUserID(ctx context.Context, userID i
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapSecurityInternal(err, "GetRecentByUserID")
 	}
 
 	span.SetAttributes(attribute.Int("activities.count", len(activities)))
@@ -89,7 +95,7 @@ func (r *GORMSecurityRepository) CountByUserAndSeverity(ctx context.Context, use
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return 0, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return 0, wrapSecurityInternal(err, "CountByUserAndSeverity")
 	}
 
 	span.SetAttributes(attribute.Int64("activities.count", count))
@@ -113,7 +119,7 @@ func (r *GORMSecurityRepository) BlockUser(ctx context.Context, block *securityd
 		if strings.Contains(msg, "23505") || strings.Contains(msg, "idx_unique_active_block") {
 			return securityrepo.ErrAlreadyBlocked
 		}
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return wrapSecurityInternal(err, "BlockUser")
 	}
 
 	span.SetStatus(codes.Ok, "blocked")
@@ -137,7 +143,7 @@ func (r *GORMSecurityRepository) AutoUnblock(ctx context.Context, userID int64) 
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapSecurityInternal(result.Error, "AutoUnblock")
 	}
 
 	span.SetStatus(codes.Ok, "auto-unblocked")
@@ -162,7 +168,7 @@ func (r *GORMSecurityRepository) GetActiveBlock(ctx context.Context, userID int6
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapSecurityInternal(err, "GetActiveBlock")
 	}
 
 	span.SetStatus(codes.Ok, "found active block")
@@ -190,12 +196,12 @@ func (r *GORMSecurityRepository) UnblockUser(ctx context.Context, userID int64, 
 	if result.Error != nil {
 		span.SetStatus(codes.Error, result.Error.Error())
 		span.RecordError(result.Error)
-		return exceptions.NewInternalException(map[string]any{"error": result.Error.Error()})
+		return wrapSecurityInternal(result.Error, "UnblockUser")
 	}
 
 	if result.RowsAffected == 0 {
 		span.SetStatus(codes.Error, "no active block found")
-		return exceptions.NewNotFoundException("No active block found for user", nil)
+		return securitydomain.NoActiveBlock()
 	}
 
 	span.SetStatus(codes.Ok, "unblocked")
