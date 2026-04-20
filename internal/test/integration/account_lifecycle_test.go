@@ -118,7 +118,7 @@ func TestConfirmEmail_AlreadyUsed(t *testing.T) {
 	token := queryToken(t, "email_verification_tokens", "bob-used@example.com")
 
 	body := fmt.Sprintf(`{"token":%q}`, token)
-	for i, wantStatus := range []int{http.StatusOK, http.StatusUnprocessableEntity} {
+	for i, wantStatus := range []int{http.StatusOK, http.StatusConflict} {
 		req, _ := http.NewRequest(http.MethodPost, "/auth/confirm-email", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := request(req)

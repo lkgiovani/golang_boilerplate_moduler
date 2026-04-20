@@ -63,8 +63,8 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 		if i == 0 && resp.StatusCode != http.StatusCreated {
 			t.Fatalf("first request: expected 201, got %d", resp.StatusCode)
 		}
-		if i == 1 && resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Fatalf("second request: expected 422, got %d", resp.StatusCode)
+		if i == 1 && resp.StatusCode != http.StatusConflict {
+			t.Fatalf("second request: expected 409, got %d", resp.StatusCode)
 		}
 	}
 }
