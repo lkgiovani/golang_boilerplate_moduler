@@ -5,7 +5,6 @@ import (
 
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -44,7 +43,7 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "CreateUser", "email", input.Email)
 
 	if input.Name == "" || input.Email == "" {
-		err := exceptions.NewBadRequestException("Name and email are required", nil)
+		err := usersdomain.MissingNameOrEmail()
 		log.Warn("validation failed — name or email is empty")
 		observability.RecordError(span, err)
 		return UserOutput{}, err
@@ -52,10 +51,7 @@ func (uc *CreateUserUseCase) Execute(ctx context.Context, input CreateUserInput)
 
 	existing, _ := uc.userRepo.GetByEmail(ctx, input.Email)
 	if existing != nil {
-		err := exceptions.NewUnprocessableException(
-			"Email already in use",
-			map[string]any{"email": input.Email},
-		)
+		err := usersdomain.EmailTaken(input.Email)
 		log.Warn("email already in use", "email", input.Email)
 		observability.RecordError(span, err)
 		return UserOutput{}, err

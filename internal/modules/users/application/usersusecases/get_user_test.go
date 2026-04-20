@@ -7,7 +7,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/users/application/usersusecases"
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 )
 
 func TestGetUserUseCase_Success(t *testing.T) {
@@ -18,7 +18,7 @@ func TestGetUserUseCase_Success(t *testing.T) {
 			if id == 42 {
 				return expected, nil
 			}
-			return nil, exceptions.NewNotFoundException("user not found", nil)
+			return nil, usersdomain.UserNotFound()
 		},
 	}
 
@@ -40,7 +40,7 @@ func TestGetUserUseCase_Success(t *testing.T) {
 }
 
 func TestGetUserUseCase_NotFound(t *testing.T) {
-	notFoundErr := exceptions.NewNotFoundException("user not found", nil)
+	notFoundErr := usersdomain.UserNotFound()
 
 	repo := &mockUserRepo{
 		getByIDFn: func(_ context.Context, _ int64) (*usersdomain.User, error) {
@@ -54,13 +54,8 @@ func TestGetUserUseCase_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected not-found error, got nil")
 	}
-
-	var domainErr *exceptions.DomainError
-	if !errors.As(err, &domainErr) {
-		t.Fatalf("expected DomainError, got %T", err)
-	}
-	if domainErr.Code != exceptions.CodeNotFound {
-		t.Fatalf("expected NOT_FOUND, got %s", domainErr.Code)
+	if got := errs.ErrorCode(err); got != errs.ENOTFOUND {
+		t.Fatalf("expected ENOTFOUND, got %s", got)
 	}
 }
 

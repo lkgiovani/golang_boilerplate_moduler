@@ -6,7 +6,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 	sharedrepo "golang_boilerplate_module/internal/shared/infra/persistence/repositories"
 
 	"go.opentelemetry.io/otel"
@@ -38,14 +38,15 @@ func (r *GORMUserRepository) GetByEmail(ctx context.Context, email string) (*use
 	var user usersdomain.User
 	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		notFound := exceptions.NewNotFoundException("User not found", nil)
 		span.SetStatus(codes.Error, "not found")
-		return nil, notFound
+		return nil, usersdomain.UserNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		wrapped := errs.Wrap(errs.EINTERNAL, err, "users_repository.GetByEmail failed")
+		wrapped.Reportable = true
+		return nil, wrapped
 	}
 
 	span.SetAttributes(attribute.Int64("user.id", user.ID))

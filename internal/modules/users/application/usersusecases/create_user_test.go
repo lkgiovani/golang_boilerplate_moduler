@@ -7,7 +7,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/users/application/usersusecases"
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 )
 
 func TestCreateUserUseCase_Success(t *testing.T) {
@@ -52,13 +52,8 @@ func TestCreateUserUseCase_MissingName(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing name, got nil")
 	}
-
-	var domainErr *exceptions.DomainError
-	if !errors.As(err, &domainErr) {
-		t.Fatalf("expected DomainError, got %T", err)
-	}
-	if domainErr.Code != exceptions.CodeBadRequest {
-		t.Fatalf("expected BAD_REQUEST, got %s", domainErr.Code)
+	if got := errs.ErrorCode(err); got != errs.EBADREQUEST {
+		t.Fatalf("expected EBADREQUEST, got %s", got)
 	}
 }
 
@@ -73,13 +68,8 @@ func TestCreateUserUseCase_MissingEmail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing email, got nil")
 	}
-
-	var domainErr *exceptions.DomainError
-	if !errors.As(err, &domainErr) {
-		t.Fatalf("expected DomainError, got %T", err)
-	}
-	if domainErr.Code != exceptions.CodeBadRequest {
-		t.Fatalf("expected BAD_REQUEST, got %s", domainErr.Code)
+	if got := errs.ErrorCode(err); got != errs.EBADREQUEST {
+		t.Fatalf("expected EBADREQUEST, got %s", got)
 	}
 }
 
@@ -101,13 +91,8 @@ func TestCreateUserUseCase_DuplicateEmail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate email, got nil")
 	}
-
-	var domainErr *exceptions.DomainError
-	if !errors.As(err, &domainErr) {
-		t.Fatalf("expected DomainError, got %T", err)
-	}
-	if domainErr.Code != exceptions.CodeUnprocessable {
-		t.Fatalf("expected UNPROCESSABLE, got %s", domainErr.Code)
+	if got := errs.ErrorCode(err); got != errs.EDUPLICATION {
+		t.Fatalf("expected EDUPLICATION, got %s", got)
 	}
 }
 

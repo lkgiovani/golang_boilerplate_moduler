@@ -5,7 +5,6 @@ import (
 
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -41,7 +40,7 @@ func (uc *UpdateMeUseCase) Execute(ctx context.Context, input UpdateMeInput) (*u
 	updates := map[string]any{}
 	if input.Name != nil {
 		if *input.Name == "" {
-			err := exceptions.NewBadRequestException("Name cannot be empty", nil)
+			err := usersdomain.NameCannotBeEmpty()
 			observability.RecordError(span, err)
 			return nil, err
 		}
@@ -52,7 +51,7 @@ func (uc *UpdateMeUseCase) Execute(ctx context.Context, input UpdateMeInput) (*u
 	}
 
 	if len(updates) == 0 {
-		err := exceptions.NewBadRequestException("No fields to update", nil)
+		err := usersdomain.NoFieldsToUpdate()
 		observability.RecordError(span, err)
 		return nil, err
 	}

@@ -5,7 +5,6 @@ import (
 
 	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -35,7 +34,7 @@ func (uc *GetMeUseCase) Execute(ctx context.Context, userID int64) (*usersdomain
 	if err != nil || user == nil {
 		log.Warn("user not found")
 		observability.RecordError(span, err)
-		return nil, exceptions.NewNotFoundException("User not found", nil)
+		return nil, usersdomain.UserNotFound()
 	}
 	return user, nil
 }

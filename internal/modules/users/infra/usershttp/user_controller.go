@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"golang_boilerplate_module/internal/modules/users/application/usersusecases"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/modules/users/usersdomain"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/http/middleware"
 	"golang_boilerplate_module/internal/shared/infra/observability"
@@ -53,7 +53,7 @@ func (ctrl *UserController) GetMe(c *fiber.Ctx) error {
 
 	userID, ok := c.Locals("userID").(int64)
 	if !ok || userID == 0 {
-		domainErr := exceptions.NewUnauthorizedException("missing user identity", nil)
+		domainErr := usersdomain.MissingUserIdentity()
 		observability.RecordError(span, domainErr)
 		return domainErr
 	}
@@ -76,7 +76,7 @@ func (ctrl *UserController) UpdateMe(c *fiber.Ctx) error {
 
 	userID, ok := c.Locals("userID").(int64)
 	if !ok || userID == 0 {
-		domainErr := exceptions.NewUnauthorizedException("missing user identity", nil)
+		domainErr := usersdomain.MissingUserIdentity()
 		observability.RecordError(span, domainErr)
 		return domainErr
 	}
@@ -84,7 +84,7 @@ func (ctrl *UserController) UpdateMe(c *fiber.Ctx) error {
 
 	var req updateMeRequest
 	if err := c.BodyParser(&req); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := usersdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -110,7 +110,7 @@ func (ctrl *UserController) Create(c *fiber.Ctx) error {
 
 	var input usersusecases.CreateUserInput
 	if err := c.BodyParser(&input); err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid request body", nil)
+		domainErr := usersdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -135,7 +135,7 @@ func (ctrl *UserController) GetByID(c *fiber.Ctx) error {
 	idStr := c.Params("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		domainErr := exceptions.NewBadRequestException("Invalid user ID", nil)
+		domainErr := usersdomain.InvalidUserID()
 		log.Warn("invalid user id param", "id", idStr)
 		observability.RecordError(span, domainErr)
 		return domainErr
