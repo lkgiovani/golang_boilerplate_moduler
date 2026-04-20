@@ -7,7 +7,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 	sharedrepo "golang_boilerplate_module/internal/shared/infra/persistence/repositories"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -29,6 +29,12 @@ func NewGORMPaymentEventRepository(db *gorm.DB) plansrepo.PaymentEventRepository
 	}
 }
 
+func wrapPaymentEventInternal(err error, op string) *errs.Error {
+	e := errs.Wrap(errs.EINTERNAL, err, "payment_event_repository.%s failed", op)
+	e.Reportable = true
+	return e
+}
+
 // GetByStripeEventID retrieves a payment event by its Stripe event ID.
 func (r *GORMPaymentEventRepository) GetByStripeEventID(ctx context.Context, stripeEventID string) (*plansdomain.PaymentEvent, error) {
 	ctx, span := dbTracer.Start(ctx, "GORMPaymentEventRepository.GetByStripeEventID")
@@ -40,12 +46,12 @@ func (r *GORMPaymentEventRepository) GetByStripeEventID(ctx context.Context, str
 	err := r.db.WithContext(ctx).Where("stripe_event_id = ?", stripeEventID).First(&event).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Payment event not found", nil)
+		return nil, plansdomain.PaymentEventNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapPaymentEventInternal(err, "GetByStripeEventID")
 	}
 
 	span.SetAttributes(attribute.Int64("payment_event.id", event.ID))
@@ -73,7 +79,7 @@ func (r *GORMPaymentEventRepository) MarkProcessed(ctx context.Context, id int64
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return wrapPaymentEventInternal(err, "MarkProcessed")
 	}
 
 	return nil
@@ -101,7 +107,7 @@ func (r *GORMPaymentEventRepository) MarkFailed(ctx context.Context, id int64, e
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return wrapPaymentEventInternal(err, "MarkFailed")
 	}
 
 	return nil

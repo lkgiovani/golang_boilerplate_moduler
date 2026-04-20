@@ -2,7 +2,7 @@ package planshttp
 
 import (
 	"golang_boilerplate_module/internal/modules/plans/application/plansusecases"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -27,8 +27,6 @@ func NewWebhookController(
 }
 
 // HandleWebhook handles POST /api/webhooks/stripe.
-// Reads the raw body and Stripe-Signature header, then delegates to HandleWebhookUseCase
-// for signature verification, idempotency check, and event processing.
 func (ctrl *WebhookController) HandleWebhook(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "WebhookController.HandleWebhook")
 	defer span.End()
@@ -38,10 +36,10 @@ func (ctrl *WebhookController) HandleWebhook(c *fiber.Ctx) error {
 	signature := c.Get("Stripe-Signature")
 
 	if len(payload) == 0 {
-		return exceptions.NewBadRequestException("empty webhook payload", nil)
+		return plansdomain.EmptyWebhookPayload()
 	}
 	if signature == "" {
-		return exceptions.NewBadRequestException("missing Stripe-Signature header", nil)
+		return plansdomain.MissingStripeSignature()
 	}
 
 	input := plansusecases.HandleWebhookInput{

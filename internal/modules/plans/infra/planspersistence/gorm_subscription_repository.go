@@ -6,7 +6,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 	sharedrepo "golang_boilerplate_module/internal/shared/infra/persistence/repositories"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -28,6 +28,12 @@ func NewGORMSubscriptionRepository(db *gorm.DB) plansrepo.SubscriptionRepository
 	}
 }
 
+func wrapSubscriptionInternal(err error, op string) *errs.Error {
+	e := errs.Wrap(errs.EINTERNAL, err, "subscription_repository.%s failed", op)
+	e.Reportable = true
+	return e
+}
+
 // GetActiveByUserID retrieves the active or trialing subscription for a user, preloading the Plan.
 func (r *GORMSubscriptionRepository) GetActiveByUserID(ctx context.Context, userID int64) (*plansdomain.Subscription, error) {
 	ctx, span := dbTracer.Start(ctx, "GORMSubscriptionRepository.GetActiveByUserID")
@@ -42,12 +48,12 @@ func (r *GORMSubscriptionRepository) GetActiveByUserID(ctx context.Context, user
 		First(&sub).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Active subscription not found", nil)
+		return nil, plansdomain.ActiveSubscriptionNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapSubscriptionInternal(err, "GetActiveByUserID")
 	}
 
 	span.SetAttributes(attribute.Int64("subscription.id", sub.ID))
@@ -65,12 +71,12 @@ func (r *GORMSubscriptionRepository) GetByStripeSubscriptionID(ctx context.Conte
 	err := r.db.WithContext(ctx).Where("stripe_subscription_id = ?", stripeSubID).First(&sub).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Subscription not found", nil)
+		return nil, plansdomain.SubscriptionNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapSubscriptionInternal(err, "GetByStripeSubscriptionID")
 	}
 
 	span.SetAttributes(attribute.Int64("subscription.id", sub.ID))
@@ -78,7 +84,6 @@ func (r *GORMSubscriptionRepository) GetByStripeSubscriptionID(ctx context.Conte
 }
 
 // GetByStripeCustomerID retrieves a subscription by Stripe customer ID.
-// Includes incomplete status so checkout.session.completed webhooks can activate pending subscriptions.
 func (r *GORMSubscriptionRepository) GetByStripeCustomerID(ctx context.Context, stripeCustID string) (*plansdomain.Subscription, error) {
 	ctx, span := dbTracer.Start(ctx, "GORMSubscriptionRepository.GetByStripeCustomerID")
 	defer span.End()
@@ -96,12 +101,12 @@ func (r *GORMSubscriptionRepository) GetByStripeCustomerID(ctx context.Context, 
 		First(&sub).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Subscription not found", nil)
+		return nil, plansdomain.SubscriptionNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapSubscriptionInternal(err, "GetByStripeCustomerID")
 	}
 
 	span.SetAttributes(attribute.Int64("subscription.id", sub.ID))

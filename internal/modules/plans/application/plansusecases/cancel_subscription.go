@@ -6,7 +6,6 @@ import (
 
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -50,7 +49,7 @@ func (uc *CancelSubscriptionUseCase) Execute(ctx context.Context, userID int64) 
 		return err
 	}
 	if sub == nil {
-		err := exceptions.NewNotFoundException("no active subscription", nil)
+		err := plansdomain.NoActiveSubscription()
 		log.Warn("no active subscription found")
 		observability.RecordError(span, err)
 		return err

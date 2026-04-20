@@ -6,7 +6,6 @@ import (
 
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -18,15 +17,15 @@ var plansTracer = otel.Tracer("plans.usecases")
 
 // CreatePlanInput holds the data required to create a new plan.
 type CreatePlanInput struct {
-	Name            string           `json:"name"`
-	Slug            string           `json:"slug"`
-	Description     *string          `json:"description,omitempty"`
-	PriceCents      int64            `json:"price_cents"`
-	Currency        string           `json:"currency"`
-	BillingInterval string           `json:"billing_interval"`
-	Features        json.RawMessage  `json:"features,omitempty"`
-	SortOrder       int              `json:"sort_order"`
-	StripePriceID   *string          `json:"stripe_price_id,omitempty"`
+	Name            string          `json:"name"`
+	Slug            string          `json:"slug"`
+	Description     *string         `json:"description,omitempty"`
+	PriceCents      int64           `json:"price_cents"`
+	Currency        string          `json:"currency"`
+	BillingInterval string          `json:"billing_interval"`
+	Features        json.RawMessage `json:"features,omitempty"`
+	SortOrder       int             `json:"sort_order"`
+	StripePriceID   *string         `json:"stripe_price_id,omitempty"`
 }
 
 // CreatePlanUseCase handles the creation of a new subscription plan.
@@ -57,14 +56,14 @@ func (uc *CreatePlanUseCase) Execute(ctx context.Context, input CreatePlanInput)
 
 	// Validate required fields
 	if input.Name == "" {
-		err := exceptions.NewBadRequestException("plan name is required", nil)
+		err := plansdomain.MissingPlanName()
 		log.Warn("validation failed - missing plan name")
 		observability.RecordError(span, err)
 		return nil, err
 	}
 
 	if input.Slug == "" {
-		err := exceptions.NewBadRequestException("plan slug is required", nil)
+		err := plansdomain.MissingPlanSlug()
 		log.Warn("validation failed - missing plan slug")
 		observability.RecordError(span, err)
 		return nil, err
@@ -72,7 +71,7 @@ func (uc *CreatePlanUseCase) Execute(ctx context.Context, input CreatePlanInput)
 
 	validIntervals := map[string]bool{"monthly": true, "yearly": true, "lifetime": true}
 	if !validIntervals[input.BillingInterval] {
-		err := exceptions.NewBadRequestException("billing_interval must be monthly, yearly, or lifetime", nil)
+		err := plansdomain.InvalidBillingInterval()
 		log.Warn("validation failed - invalid billing interval", "interval", input.BillingInterval)
 		observability.RecordError(span, err)
 		return nil, err

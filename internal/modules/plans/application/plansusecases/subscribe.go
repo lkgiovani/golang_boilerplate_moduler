@@ -5,7 +5,6 @@ import (
 
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -65,7 +64,7 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 	// 1. Check if user already has an active subscription
 	existingSub, _ := uc.subRepo.GetActiveByUserID(ctx, input.UserID)
 	if existingSub != nil {
-		err := exceptions.NewBadRequestException("user already has an active subscription", nil)
+		err := plansdomain.AlreadySubscribed()
 		log.Warn("user already has an active subscription")
 		observability.RecordError(span, err)
 		return nil, err
@@ -81,7 +80,7 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 
 	// 3. Check plan has StripePriceID
 	if plan.StripePriceID == nil || *plan.StripePriceID == "" {
-		err := exceptions.NewBadRequestException("plan has no Stripe price configured", nil)
+		err := plansdomain.MissingStripePrice()
 		log.Warn("plan has no stripe price configured", "planId", plan.ID)
 		observability.RecordError(span, err)
 		return nil, err
@@ -100,7 +99,7 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 	if err != nil {
 		log.Error("failed to create Stripe customer", "error", err.Error())
 		observability.RecordError(span, err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": "failed to create payment customer"})
+		return nil, plansdomain.FailedToCreateCustomer()
 	}
 
 	span.SetAttributes(attribute.String("stripe.customer_id", customerID))
@@ -115,7 +114,7 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 	if err != nil {
 		log.Error("failed to create checkout session", "error", err.Error())
 		observability.RecordError(span, err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": "failed to create checkout session"})
+		return nil, plansdomain.FailedToCreateCheckout()
 	}
 
 	// 6. Create local subscription record with incomplete status
@@ -129,7 +128,7 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 	if _, err := uc.subRepo.Add(ctx, subscription); err != nil {
 		log.Error("failed to create subscription record", "error", err.Error())
 		observability.RecordError(span, err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": "failed to create subscription record"})
+		return nil, plansdomain.FailedToCreateSubscription()
 	}
 
 	log.Info("checkout session created", "sessionId", result.SessionID, "subscriptionId", subscription.ID)

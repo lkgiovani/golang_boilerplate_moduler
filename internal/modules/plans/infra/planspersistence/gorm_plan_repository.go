@@ -6,7 +6,7 @@ import (
 
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/shared/domain/errs"
 	sharedrepo "golang_boilerplate_module/internal/shared/infra/persistence/repositories"
 
 	"go.opentelemetry.io/otel"
@@ -31,6 +31,12 @@ func NewGORMPlanRepository(db *gorm.DB) plansrepo.PlanRepository {
 	}
 }
 
+func wrapPlanInternal(err error, op string) *errs.Error {
+	e := errs.Wrap(errs.EINTERNAL, err, "plan_repository.%s failed", op)
+	e.Reportable = true
+	return e
+}
+
 // GetBySlug retrieves a plan by its unique slug.
 func (r *GORMPlanRepository) GetBySlug(ctx context.Context, slug string) (*plansdomain.Plan, error) {
 	ctx, span := dbTracer.Start(ctx, "GORMPlanRepository.GetBySlug")
@@ -42,12 +48,12 @@ func (r *GORMPlanRepository) GetBySlug(ctx context.Context, slug string) (*plans
 	err := r.db.WithContext(ctx).Where("slug = ?", slug).First(&plan).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
-		return nil, exceptions.NewNotFoundException("Plan not found", nil)
+		return nil, plansdomain.PlanNotFound()
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapPlanInternal(err, "GetBySlug")
 	}
 
 	span.SetAttributes(attribute.Int64("plan.id", plan.ID))
@@ -66,7 +72,7 @@ func (r *GORMPlanRepository) ListActive(ctx context.Context) ([]plansdomain.Plan
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, exceptions.NewInternalException(map[string]any{"error": err.Error()})
+		return nil, wrapPlanInternal(err, "ListActive")
 	}
 
 	span.SetAttributes(attribute.Int("plan.count", len(plans)))

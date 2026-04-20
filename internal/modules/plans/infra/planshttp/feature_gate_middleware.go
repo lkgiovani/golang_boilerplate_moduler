@@ -1,8 +1,8 @@
 package planshttp
 
 import (
+	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 
 	"github.com/gofiber/fiber/v2"
@@ -35,21 +35,21 @@ func (m *FeatureGateMiddleware) RequireFeature(feature string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(int64)
 		if !ok {
-			return exceptions.NewUnauthorizedException("authentication required", nil)
+			return plansdomain.AuthRequired()
 		}
 
 		sub, err := m.subRepo.GetActiveByUserID(c.UserContext(), userID)
 		if err != nil || sub == nil {
-			return exceptions.NewForbiddenException("active subscription required", nil)
+			return plansdomain.ActiveSubscriptionRequired()
 		}
 
 		plan, err := m.planRepo.GetByID(c.UserContext(), sub.PlanID)
 		if err != nil {
-			return exceptions.NewInternalException(map[string]any{"error": "failed to load plan"})
+			return plansdomain.FailedToLoadPlan()
 		}
 
 		if !plan.HasFeature(feature) {
-			return exceptions.NewForbiddenException("plan does not include feature: "+feature, nil)
+			return plansdomain.FeatureNotInPlan(feature)
 		}
 
 		c.Locals("subscriptionID", sub.ID)

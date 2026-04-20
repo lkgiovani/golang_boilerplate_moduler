@@ -7,7 +7,6 @@ import (
 
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -65,7 +64,7 @@ func (uc *HandleWebhookUseCase) Execute(ctx context.Context, input HandleWebhook
 	if err != nil {
 		log.Warn("invalid webhook signature", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewBadRequestException("invalid webhook signature", nil)
+		return plansdomain.InvalidWebhookSignature()
 	}
 
 	// 2. Parse event from verified payload
@@ -73,7 +72,7 @@ func (uc *HandleWebhookUseCase) Execute(ctx context.Context, input HandleWebhook
 	if err := json.Unmarshal(verifiedPayload, &event); err != nil {
 		log.Error("failed to parse webhook event", "error", err.Error())
 		observability.RecordError(span, err)
-		return exceptions.NewBadRequestException("invalid webhook payload", nil)
+		return plansdomain.InvalidWebhookPayload()
 	}
 
 	span.SetAttributes(
@@ -142,7 +141,6 @@ func (uc *HandleWebhookUseCase) Execute(ctx context.Context, input HandleWebhook
 }
 
 // handleCheckoutCompleted processes checkout.session.completed events.
-// Activates the subscription and links the Stripe subscription ID.
 func (uc *HandleWebhookUseCase) handleCheckoutCompleted(ctx context.Context, rawObj json.RawMessage, log providers.LoggerProvider) error {
 	var obj map[string]any
 	if err := json.Unmarshal(rawObj, &obj); err != nil {
@@ -179,7 +177,6 @@ func (uc *HandleWebhookUseCase) handleCheckoutCompleted(ctx context.Context, raw
 }
 
 // handleInvoicePaid processes invoice.paid events.
-// Updates subscription status to active and refreshes billing period dates.
 func (uc *HandleWebhookUseCase) handleInvoicePaid(ctx context.Context, rawObj json.RawMessage, log providers.LoggerProvider) error {
 	var obj map[string]any
 	if err := json.Unmarshal(rawObj, &obj); err != nil {
@@ -206,7 +203,6 @@ func (uc *HandleWebhookUseCase) handleInvoicePaid(ctx context.Context, rawObj js
 		"status": string(plansdomain.StatusActive),
 	}
 
-	// Parse period dates if available
 	if periodStart, ok := obj["period_start"].(float64); ok {
 		t := time.Unix(int64(periodStart), 0)
 		updates["current_period_start"] = t
@@ -221,7 +217,6 @@ func (uc *HandleWebhookUseCase) handleInvoicePaid(ctx context.Context, rawObj js
 }
 
 // handleInvoicePaymentFailed processes invoice.payment_failed events.
-// Updates subscription status to past_due.
 func (uc *HandleWebhookUseCase) handleInvoicePaymentFailed(ctx context.Context, rawObj json.RawMessage, log providers.LoggerProvider) error {
 	var obj map[string]any
 	if err := json.Unmarshal(rawObj, &obj); err != nil {
@@ -249,7 +244,6 @@ func (uc *HandleWebhookUseCase) handleInvoicePaymentFailed(ctx context.Context, 
 }
 
 // handleSubscriptionDeleted processes customer.subscription.deleted events.
-// Marks the subscription as canceled.
 func (uc *HandleWebhookUseCase) handleSubscriptionDeleted(ctx context.Context, rawObj json.RawMessage, log providers.LoggerProvider) error {
 	var obj map[string]any
 	if err := json.Unmarshal(rawObj, &obj); err != nil {
@@ -279,7 +273,6 @@ func (uc *HandleWebhookUseCase) handleSubscriptionDeleted(ctx context.Context, r
 }
 
 // handleSubscriptionUpdated processes customer.subscription.updated events.
-// Updates subscription status and cancel_at_period_end flag.
 func (uc *HandleWebhookUseCase) handleSubscriptionUpdated(ctx context.Context, rawObj json.RawMessage, log providers.LoggerProvider) error {
 	var obj map[string]any
 	if err := json.Unmarshal(rawObj, &obj); err != nil {
@@ -302,12 +295,10 @@ func (uc *HandleWebhookUseCase) handleSubscriptionUpdated(ctx context.Context, r
 
 	updates := map[string]any{}
 
-	// Update status from event
 	if status, ok := obj["status"].(string); ok {
 		updates["status"] = status
 	}
 
-	// Update cancel_at_period_end
 	if cancelAtPeriodEnd, ok := obj["cancel_at_period_end"].(bool); ok {
 		updates["cancel_at_period_end"] = cancelAtPeriodEnd
 	}

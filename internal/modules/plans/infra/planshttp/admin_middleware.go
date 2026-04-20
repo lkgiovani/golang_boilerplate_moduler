@@ -1,7 +1,7 @@
 package planshttp
 
 import (
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -13,7 +13,7 @@ func AdminRequired() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		isAdmin, ok := c.Locals("userAdmin").(bool)
 		if !ok || !isAdmin {
-			return exceptions.NewForbiddenException("admin access required", nil)
+			return plansdomain.AdminAccessRequired()
 		}
 		return c.Next()
 	}

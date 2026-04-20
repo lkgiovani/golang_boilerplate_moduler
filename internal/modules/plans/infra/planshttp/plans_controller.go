@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"golang_boilerplate_module/internal/modules/plans/application/plansusecases"
-	"golang_boilerplate_module/internal/shared/domain/exceptions"
+	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/http/middleware"
 	"golang_boilerplate_module/internal/shared/infra/observability"
@@ -18,15 +18,15 @@ var tracer = otel.Tracer("plans.http")
 
 // PlansController handles HTTP requests for plan management and subscription endpoints.
 type PlansController struct {
-	createPlanUC       *plansusecases.CreatePlanUseCase
-	updatePlanUC       *plansusecases.UpdatePlanUseCase
-	listPlansUC        *plansusecases.ListPlansUseCase
-	getPlanUC          *plansusecases.GetPlanUseCase
-	deletePlanUC       *plansusecases.DeletePlanUseCase
-	subscribeUC        *plansusecases.SubscribeUseCase
-	getSubscriptionUC  *plansusecases.GetSubscriptionUseCase
+	createPlanUC         *plansusecases.CreatePlanUseCase
+	updatePlanUC         *plansusecases.UpdatePlanUseCase
+	listPlansUC          *plansusecases.ListPlansUseCase
+	getPlanUC            *plansusecases.GetPlanUseCase
+	deletePlanUC         *plansusecases.DeletePlanUseCase
+	subscribeUC          *plansusecases.SubscribeUseCase
+	getSubscriptionUC    *plansusecases.GetSubscriptionUseCase
 	cancelSubscriptionUC *plansusecases.CancelSubscriptionUseCase
-	logger             providers.LoggerProvider
+	logger               providers.LoggerProvider
 }
 
 // NewPlansController creates a new PlansController with all required dependencies.
@@ -55,8 +55,6 @@ func NewPlansController(
 }
 
 // CreatePlan handles POST /api/plans.
-// Parses the request body into CreatePlanInput and delegates to CreatePlanUseCase.
-// Returns 201 with the created plan JSON.
 func (ctrl *PlansController) CreatePlan(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.CreatePlan")
 	defer span.End()
@@ -65,7 +63,7 @@ func (ctrl *PlansController) CreatePlan(c *fiber.Ctx) error {
 
 	var input plansusecases.CreatePlanInput
 	if err := c.BodyParser(&input); err != nil {
-		domainErr := exceptions.NewBadRequestException("invalid request body", nil)
+		domainErr := plansdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -83,8 +81,6 @@ func (ctrl *PlansController) CreatePlan(c *fiber.Ctx) error {
 }
 
 // UpdatePlan handles PUT /api/plans/:id.
-// Parses the plan ID from the URL and request body into UpdatePlanInput,
-// then delegates to UpdatePlanUseCase. Returns 200 with the updated plan.
 func (ctrl *PlansController) UpdatePlan(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.UpdatePlan")
 	defer span.End()
@@ -93,7 +89,7 @@ func (ctrl *PlansController) UpdatePlan(c *fiber.Ctx) error {
 
 	planID, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
-		domainErr := exceptions.NewBadRequestException("invalid plan ID", nil)
+		domainErr := plansdomain.InvalidPlanID()
 		log.Warn("failed to parse plan ID", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -103,7 +99,7 @@ func (ctrl *PlansController) UpdatePlan(c *fiber.Ctx) error {
 
 	var input plansusecases.UpdatePlanInput
 	if err := c.BodyParser(&input); err != nil {
-		domainErr := exceptions.NewBadRequestException("invalid request body", nil)
+		domainErr := plansdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -119,7 +115,6 @@ func (ctrl *PlansController) UpdatePlan(c *fiber.Ctx) error {
 }
 
 // ListPlans handles GET /api/plans.
-// Returns 200 with a JSON array of all active plans.
 func (ctrl *PlansController) ListPlans(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.ListPlans")
 	defer span.End()
@@ -134,7 +129,6 @@ func (ctrl *PlansController) ListPlans(c *fiber.Ctx) error {
 }
 
 // GetPlan handles GET /api/plans/:slug.
-// Returns 200 with the plan matching the given slug.
 func (ctrl *PlansController) GetPlan(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.GetPlan")
 	defer span.End()
@@ -152,7 +146,6 @@ func (ctrl *PlansController) GetPlan(c *fiber.Ctx) error {
 }
 
 // DeletePlan handles DELETE /api/plans/:id.
-// Soft-deletes (deactivates) the plan and returns 204.
 func (ctrl *PlansController) DeletePlan(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.DeletePlan")
 	defer span.End()
@@ -161,7 +154,7 @@ func (ctrl *PlansController) DeletePlan(c *fiber.Ctx) error {
 
 	planID, err := strconv.ParseInt(c.Params("id"), 10, 64)
 	if err != nil {
-		domainErr := exceptions.NewBadRequestException("invalid plan ID", nil)
+		domainErr := plansdomain.InvalidPlanID()
 		log.Warn("failed to parse plan ID", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -185,7 +178,6 @@ type subscribeRequest struct {
 }
 
 // Subscribe handles POST /api/subscriptions/checkout.
-// Creates a Stripe checkout session for the authenticated user.
 func (ctrl *PlansController) Subscribe(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.Subscribe")
 	defer span.End()
@@ -194,13 +186,13 @@ func (ctrl *PlansController) Subscribe(c *fiber.Ctx) error {
 
 	userID, ok := c.Locals("userID").(int64)
 	if !ok {
-		return exceptions.NewUnauthorizedException("authentication required", nil)
+		return plansdomain.AuthRequired()
 	}
 	userEmail, _ := c.Locals("userEmail").(string)
 
 	var body subscribeRequest
 	if err := c.BodyParser(&body); err != nil {
-		domainErr := exceptions.NewBadRequestException("invalid request body", nil)
+		domainErr := plansdomain.InvalidRequestBody()
 		log.Warn("failed to parse request body", "error", err.Error())
 		observability.RecordError(span, domainErr)
 		return domainErr
@@ -224,14 +216,13 @@ func (ctrl *PlansController) Subscribe(c *fiber.Ctx) error {
 }
 
 // GetSubscription handles GET /api/subscriptions/me.
-// Returns the authenticated user's active subscription.
 func (ctrl *PlansController) GetSubscription(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.GetSubscription")
 	defer span.End()
 
 	userID, ok := c.Locals("userID").(int64)
 	if !ok {
-		return exceptions.NewUnauthorizedException("authentication required", nil)
+		return plansdomain.AuthRequired()
 	}
 
 	sub, err := ctrl.getSubscriptionUC.Execute(ctx, userID)
@@ -244,14 +235,13 @@ func (ctrl *PlansController) GetSubscription(c *fiber.Ctx) error {
 }
 
 // CancelSubscription handles POST /api/subscriptions/cancel.
-// Cancels the authenticated user's active subscription.
 func (ctrl *PlansController) CancelSubscription(c *fiber.Ctx) error {
 	ctx, span := tracer.Start(c.UserContext(), "PlansController.CancelSubscription")
 	defer span.End()
 
 	userID, ok := c.Locals("userID").(int64)
 	if !ok {
-		return exceptions.NewUnauthorizedException("authentication required", nil)
+		return plansdomain.AuthRequired()
 	}
 
 	if err := ctrl.cancelSubscriptionUC.Execute(ctx, userID); err != nil {
