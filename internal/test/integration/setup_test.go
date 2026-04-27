@@ -16,6 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"golang_boilerplate_module/internal/bootstrap"
+	paymentmock "golang_boilerplate_module/internal/modules/payments/infra/mock"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 
 	"github.com/gofiber/fiber/v2"
@@ -29,6 +30,7 @@ var (
 	cacheProvider  providers.CacheProvider
 	emailProvider  providers.EmailProvider
 	mailhogAPIAddr string
+	mockGateway    *paymentmock.Gateway
 )
 
 func TestMain(m *testing.M) {
@@ -117,12 +119,14 @@ func TestMain(m *testing.M) {
 	os.Setenv("JWT_ISSUER", "saas-boilerplate-test")
 	os.Setenv("STRIPE_SECRET_KEY", "sk_test_fake_for_integration_tests")
 	os.Setenv("STRIPE_WEBHOOK_SECRET", "whsec_fake_for_integration_tests")
+	os.Setenv("PAYMENT_GATEWAY", "stripe")
 
 	app := fxtest.New(
 		&testing.T{},
 		bootstrap.App,
 		fx.Decorate(func() providers.PaymentGateway {
-			return NewMockPaymentGateway()
+			mockGateway = paymentmock.New()
+			return mockGateway
 		}),
 		fx.Invoke(func(a *fiber.App, _ providers.LoggerProvider, cp providers.CacheProvider, ep providers.EmailProvider) {
 			fiberApp = a
@@ -143,22 +147,24 @@ func applyMigrations(url string) error {
 	}
 	defer db.Close()
 
-	// V1: users
+	// V1 + V8 additions: users (gateway_customer_id/gateway_name from V8)
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
-			id             BIGSERIAL PRIMARY KEY,
-			name           VARCHAR(255) NOT NULL,
-			email          VARCHAR(255) NOT NULL UNIQUE,
-			password       VARCHAR(255),
-			img_url        VARCHAR(500),
-			admin          BOOLEAN      NOT NULL DEFAULT FALSE,
-			active         BOOLEAN      NOT NULL DEFAULT TRUE,
-			email_verified BOOLEAN      NOT NULL DEFAULT FALSE,
-			source         VARCHAR(50)  NOT NULL DEFAULT 'LOCAL',
-			metadata       JSONB,
-			last_access    TIMESTAMP,
-			created_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
-			updated_at     TIMESTAMP    DEFAULT NOW()
+			id                  BIGSERIAL PRIMARY KEY,
+			name                VARCHAR(255) NOT NULL,
+			email               VARCHAR(255) NOT NULL UNIQUE,
+			password            VARCHAR(255),
+			img_url             VARCHAR(500),
+			admin               BOOLEAN      NOT NULL DEFAULT FALSE,
+			active              BOOLEAN      NOT NULL DEFAULT TRUE,
+			email_verified      BOOLEAN      NOT NULL DEFAULT FALSE,
+			source              VARCHAR(50)  NOT NULL DEFAULT 'LOCAL',
+			metadata            JSONB,
+			last_access         TIMESTAMP,
+			gateway_customer_id VARCHAR(255),
+			gateway_name        VARCHAR(32),
+			created_at          TIMESTAMP    NOT NULL DEFAULT NOW(),
+			updated_at          TIMESTAMP    DEFAULT NOW()
 		)
 	`)
 	if err != nil {
@@ -270,7 +276,7 @@ func applyMigrations(url string) error {
 		return fmt.Errorf("create password_reset_tokens: %w", err)
 	}
 
-	// V6: plans, subscriptions, payment_events
+	// V6 + V8: plans, subscriptions, payment_events with gateway_* columns
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS plans (
 			id               BIGSERIAL PRIMARY KEY,
@@ -283,7 +289,8 @@ func applyMigrations(url string) error {
 			features         JSONB NOT NULL DEFAULT '{}',
 			active           BOOLEAN NOT NULL DEFAULT TRUE,
 			sort_order       INTEGER NOT NULL DEFAULT 0,
-			stripe_price_id  VARCHAR(255),
+			gateway_price_id VARCHAR(255),
+			gateway_name     VARCHAR(32) NOT NULL DEFAULT 'stripe',
 			created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
 			updated_at       TIMESTAMP DEFAULT NOW(),
 			CONSTRAINT chk_billing_interval CHECK (billing_interval IN ('monthly', 'yearly', 'lifetime'))
@@ -305,19 +312,20 @@ func applyMigrations(url string) error {
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS subscriptions (
-			id                     BIGSERIAL PRIMARY KEY,
-			user_id                BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			plan_id                BIGINT NOT NULL REFERENCES plans(id),
-			status                 VARCHAR(50) NOT NULL DEFAULT 'active',
-			stripe_subscription_id VARCHAR(255),
-			stripe_customer_id     VARCHAR(255),
-			current_period_start   TIMESTAMP,
-			current_period_end     TIMESTAMP,
-			cancel_at_period_end   BOOLEAN NOT NULL DEFAULT FALSE,
-			canceled_at            TIMESTAMP,
-			trial_end              TIMESTAMP,
-			created_at             TIMESTAMP NOT NULL DEFAULT NOW(),
-			updated_at             TIMESTAMP DEFAULT NOW(),
+			id                      BIGSERIAL PRIMARY KEY,
+			user_id                 BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			plan_id                 BIGINT NOT NULL REFERENCES plans(id),
+			status                  VARCHAR(50) NOT NULL DEFAULT 'active',
+			gateway_subscription_id VARCHAR(255),
+			gateway_customer_id     VARCHAR(255),
+			gateway_name            VARCHAR(32) NOT NULL DEFAULT 'stripe',
+			current_period_start    TIMESTAMP,
+			current_period_end      TIMESTAMP,
+			cancel_at_period_end    BOOLEAN NOT NULL DEFAULT FALSE,
+			canceled_at             TIMESTAMP,
+			trial_end               TIMESTAMP,
+			created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
+			updated_at              TIMESTAMP DEFAULT NOW(),
 			CONSTRAINT chk_subscription_status CHECK (status IN ('active', 'trialing', 'past_due', 'canceled', 'incomplete', 'expired'))
 		)
 	`)
@@ -330,22 +338,38 @@ func applyMigrations(url string) error {
 		return fmt.Errorf("create idx_subscriptions_user_id: %w", err)
 	}
 
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_subscription_id) WHERE gateway_subscription_id IS NOT NULL`)
+	if err != nil {
+		return fmt.Errorf("create idx_subscriptions_gateway_id: %w", err)
+	}
+
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS payment_events (
-			id              BIGSERIAL PRIMARY KEY,
-			stripe_event_id VARCHAR(255) NOT NULL UNIQUE,
-			event_type      VARCHAR(100) NOT NULL,
-			subscription_id BIGINT REFERENCES subscriptions(id),
-			user_id         BIGINT REFERENCES users(id),
-			payload         JSONB NOT NULL,
-			processed       BOOLEAN NOT NULL DEFAULT FALSE,
-			processed_at    TIMESTAMP,
-			error           TEXT,
-			created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+			id               BIGSERIAL PRIMARY KEY,
+			gateway_event_id VARCHAR(255) NOT NULL,
+			event_type       VARCHAR(100) NOT NULL,
+			subscription_id  BIGINT REFERENCES subscriptions(id),
+			user_id          BIGINT REFERENCES users(id),
+			payload          JSONB NOT NULL,
+			processed        BOOLEAN NOT NULL DEFAULT FALSE,
+			processed_at     TIMESTAMP,
+			error            TEXT,
+			gateway_name     VARCHAR(32) NOT NULL DEFAULT 'stripe',
+			created_at       TIMESTAMP NOT NULL DEFAULT NOW()
 		)
 	`)
 	if err != nil {
 		return fmt.Errorf("create payment_events: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_events_gateway_event ON payment_events(gateway_name, gateway_event_id)`)
+	if err != nil {
+		return fmt.Errorf("create idx_payment_events_gateway_event: %w", err)
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_payment_events_gateway_event_id ON payment_events(gateway_event_id)`)
+	if err != nil {
+		return fmt.Errorf("create idx_payment_events_gateway_event_id: %w", err)
 	}
 
 	return nil
@@ -406,4 +430,74 @@ func createUserToken(t *testing.T, email string) (string, int64) {
 	reg := registerUser(t, "Regular User", email, "password123")
 	login := loginUser(t, email, "password123")
 	return login.TokenPair.AccessToken, reg.User.ID
+}
+
+// resetMockGateway zeroes all Called/LastInput/Return fields on the global mock
+// so each test starts from a clean state. Call from inside a test or t.Cleanup.
+func resetMockGateway(t *testing.T) {
+	t.Helper()
+	if mockGateway == nil {
+		t.Fatal("mockGateway not initialized — fx wiring missing?")
+	}
+	*mockGateway = paymentmock.Gateway{SignatureHeaderValue: "Stripe-Signature"}
+}
+
+// seedPlan inserts a plan row directly via SQL and returns its ID.
+func seedPlan(t *testing.T, slug, gatewayPriceID string) int64 {
+	t.Helper()
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	var id int64
+	err = db.QueryRow(`
+		INSERT INTO plans (name, slug, price_cents, currency, billing_interval, features, gateway_price_id, gateway_name)
+		VALUES ($1, $1, 2990, 'BRL', 'monthly', '{}', $2, 'stripe') RETURNING id
+	`, slug, gatewayPriceID).Scan(&id)
+	if err != nil {
+		t.Fatalf("seed plan: %v", err)
+	}
+	return id
+}
+
+// seedActiveSubscription inserts an active subscription row for the given user/plan.
+// gatewaySubscriptionID may be empty for "no remote sub yet" scenarios.
+func seedActiveSubscription(t *testing.T, userID, planID int64, gatewayCustomerID, gatewaySubscriptionID string) int64 {
+	t.Helper()
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	var subSQLValue any
+	if gatewaySubscriptionID == "" {
+		subSQLValue = nil
+	} else {
+		subSQLValue = gatewaySubscriptionID
+	}
+
+	var id int64
+	err = db.QueryRow(`
+		INSERT INTO subscriptions (user_id, plan_id, status, gateway_subscription_id, gateway_customer_id, gateway_name)
+		VALUES ($1, $2, 'active', $3, $4, 'stripe') RETURNING id
+	`, userID, planID, subSQLValue, gatewayCustomerID).Scan(&id)
+	if err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	return id
+}
+
+// promoteToAdmin sets users.admin = true for a given user ID.
+func promoteToAdmin(t *testing.T, userID int64) {
+	t.Helper()
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE users SET admin = true WHERE id = $1", userID); err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
 }
