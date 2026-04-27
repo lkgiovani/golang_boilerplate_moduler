@@ -7,10 +7,7 @@ import (
 )
 
 // RegisterRoutes registers all plan, subscription, and webhook HTTP routes on the Fiber app.
-// Public routes: list active plans, get plan by slug.
-// Admin routes: create, update, and delete plans (requires AuthMiddleware + AdminRequired).
-// Subscription routes: checkout, get current subscription, cancel (requires AuthMiddleware).
-// Webhook route: Stripe webhook (no auth, uses Stripe signature verification).
+// Webhook route uses :gateway path param to support multiple gateways without code changes.
 func RegisterRoutes(app *fiber.App, planCtrl *PlansController, webhookCtrl *WebhookController, authMW *authhttp.AuthMiddleware) {
 	// Plan routes (public)
 	plans := app.Group("/api/plans")
@@ -28,7 +25,14 @@ func RegisterRoutes(app *fiber.App, planCtrl *PlansController, webhookCtrl *Webh
 	subs.Post("/checkout", planCtrl.Subscribe)
 	subs.Get("/me", planCtrl.GetSubscription)
 	subs.Post("/cancel", planCtrl.CancelSubscription)
+	subs.Post("/me/payment-method", planCtrl.UpdatePaymentMethod)
+	subs.Get("/me/status", planCtrl.GetSubscriptionStatus)
+	subs.Post("/me/portal", planCtrl.CreateBillingPortal)
 
-	// Webhook route (no auth - Stripe signature verification)
-	app.Post("/api/webhooks/stripe", webhookCtrl.HandleWebhook)
+	// Refund — admin-only per D-20
+	subsAdmin := subs.Group("", AdminRequired())
+	subsAdmin.Post("/:id/refund", planCtrl.RefundPayment)
+
+	// Webhook route (parametric, no auth — gateway signature verification)
+	app.Post("/api/webhooks/:gateway", webhookCtrl.HandleWebhook)
 }
