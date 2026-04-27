@@ -58,10 +58,10 @@ func (uc *CancelSubscriptionUseCase) Execute(ctx context.Context, userID int64) 
 	span.SetAttributes(attribute.Int64("subscription.id", sub.ID))
 
 	// 2. Cancel on Stripe if stripe subscription ID exists
-	if sub.StripeSubscriptionID != nil {
-		if err := uc.gateway.CancelSubscription(ctx, *sub.StripeSubscriptionID); err != nil {
-			// Log error but don't fail - subscription may already be canceled on Stripe side
-			log.Warn("failed to cancel Stripe subscription", "stripeSubscriptionId", *sub.StripeSubscriptionID, "error", err.Error())
+	if sub.GatewaySubscriptionID != nil {
+		if err := uc.gateway.CancelSubscription(ctx, *sub.GatewaySubscriptionID); err != nil {
+			// Log error but don't fail - subscription may already be canceled on gateway side
+			log.Warn("failed to cancel gateway subscription", "gatewaySubscriptionId", *sub.GatewaySubscriptionID, "error", err.Error())
 		}
 	}
 

@@ -3,8 +3,10 @@ package plansusecases
 import (
 	"context"
 
+	"golang_boilerplate_module/internal/config"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain"
 	"golang_boilerplate_module/internal/modules/plans/plansdomain/plansrepo"
+	"golang_boilerplate_module/internal/modules/users/usersdomain/usersrepo"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 	"golang_boilerplate_module/internal/shared/infra/observability"
 
@@ -30,38 +32,49 @@ type SubscribeOutput struct {
 	SessionURL string `json:"session_url"`
 }
 
-// SubscribeUseCase handles creating a Stripe checkout session for a plan subscription.
+// SubscribeUseCase creates a gateway checkout session and persists a local subscription.
+// Reuses User.GatewayCustomerID when present to avoid duplicate customers (D-09).
 type SubscribeUseCase struct {
-	planRepo plansrepo.PlanRepository
-	subRepo  plansrepo.SubscriptionRepository
-	gateway  providers.PaymentGateway
-	logger   providers.LoggerProvider
+	planRepo    plansrepo.PlanRepository
+	subRepo     plansrepo.SubscriptionRepository
+	userRepo    usersrepo.UserRepository
+	gateway     providers.PaymentGateway
+	gatewayName string
+	logger      providers.LoggerProvider
 }
 
-// NewSubscribeUseCase creates a new SubscribeUseCase with all required dependencies.
+// NewSubscribeUseCase wires all dependencies via fx.
 func NewSubscribeUseCase(
+	cfg *config.Config,
 	planRepo plansrepo.PlanRepository,
 	subRepo plansrepo.SubscriptionRepository,
+	userRepo usersrepo.UserRepository,
 	gateway providers.PaymentGateway,
 	logger providers.LoggerProvider,
 ) *SubscribeUseCase {
 	return &SubscribeUseCase{
-		planRepo: planRepo,
-		subRepo:  subRepo,
-		gateway:  gateway,
-		logger:   logger,
+		planRepo:    planRepo,
+		subRepo:     subRepo,
+		userRepo:    userRepo,
+		gateway:     gateway,
+		gatewayName: cfg.PaymentGateway.Name,
+		logger:      logger,
 	}
 }
 
-// Execute creates a Stripe customer (lazily), initiates a checkout session,
-// and stores a local subscription record with incomplete status.
+// Execute runs the subscribe flow: validate → reuse-or-create gateway customer → checkout session → persist local subscription.
 func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (*SubscribeOutput, error) {
 	ctx, span := subscriptionTracer.Start(ctx, "SubscribeUseCase.Execute")
 	defer span.End()
 
-	log := observability.LoggerWithTrace(ctx, uc.logger).With("usecase", "Subscribe", "userId", input.UserID, "planSlug", input.PlanSlug)
+	log := observability.LoggerWithTrace(ctx, uc.logger).With(
+		"usecase", "Subscribe",
+		"userId", input.UserID,
+		"planSlug", input.PlanSlug,
+		"gateway", uc.gatewayName,
+	)
 
-	// 1. Check if user already has an active subscription
+	// 1. Reject duplicate active subscription
 	existingSub, _ := uc.subRepo.GetActiveByUserID(ctx, input.UserID)
 	if existingSub != nil {
 		err := plansdomain.AlreadySubscribed()
@@ -70,7 +83,7 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 		return nil, err
 	}
 
-	// 2. Get plan by slug
+	// 2. Load plan
 	plan, err := uc.planRepo.GetBySlug(ctx, input.PlanSlug)
 	if err != nil {
 		log.Error("failed to get plan", "error", err.Error())
@@ -78,10 +91,9 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 		return nil, err
 	}
 
-	// 3. Check plan has StripePriceID
-	if plan.StripePriceID == nil || *plan.StripePriceID == "" {
-		err := plansdomain.MissingStripePrice()
-		log.Warn("plan has no stripe price configured", "planId", plan.ID)
+	if plan.GatewayPriceID == nil || *plan.GatewayPriceID == "" {
+		err := plansdomain.MissingGatewayPrice()
+		log.Warn("plan has no gateway price configured", "planId", plan.ID)
 		observability.RecordError(span, err)
 		return nil, err
 	}
@@ -91,23 +103,42 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 		attribute.String("plan.slug", plan.Slug),
 	)
 
-	// 4. Lazy Stripe customer creation
-	customerID, err := uc.gateway.CreateCustomer(ctx, providers.CreateCustomerInput{
-		Email: input.UserEmail,
-		Name:  input.UserName,
-	})
+	// 3. Reuse gateway customer if User already has one under the current gateway (D-09 fix)
+	user, err := uc.userRepo.GetByID(ctx, input.UserID)
 	if err != nil {
-		log.Error("failed to create Stripe customer", "error", err.Error())
+		log.Error("failed to load user", "error", err.Error())
 		observability.RecordError(span, err)
-		return nil, plansdomain.FailedToCreateCustomer()
+		return nil, err
 	}
 
-	span.SetAttributes(attribute.String("stripe.customer_id", customerID))
+	var customerID string
+	if user.GatewayCustomerID != nil && *user.GatewayCustomerID != "" &&
+		user.GatewayName != nil && *user.GatewayName == uc.gatewayName {
+		customerID = *user.GatewayCustomerID
+		span.SetAttributes(attribute.Bool("gateway.customer_reused", true))
+	} else {
+		customerID, err = uc.gateway.CreateCustomer(ctx, providers.CreateCustomerInput{
+			Email: input.UserEmail,
+			Name:  input.UserName,
+		})
+		if err != nil {
+			log.Error("failed to create gateway customer", "error", err.Error())
+			observability.RecordError(span, err)
+			return nil, plansdomain.FailedToCreateCustomer()
+		}
+		if err := uc.userRepo.UpdateGatewayCustomer(ctx, user.ID, uc.gatewayName, customerID); err != nil {
+			log.Error("failed to persist gateway customer on user", "error", err.Error())
+			observability.RecordError(span, err)
+			return nil, err
+		}
+		span.SetAttributes(attribute.Bool("gateway.customer_reused", false))
+	}
+	span.SetAttributes(attribute.String("gateway.customer_id", customerID))
 
-	// 5. Create checkout session
+	// 4. Checkout session
 	result, err := uc.gateway.CreateCheckoutSession(ctx, providers.CreateCheckoutInput{
 		CustomerID: customerID,
-		PriceID:    *plan.StripePriceID,
+		PriceID:    *plan.GatewayPriceID,
 		SuccessURL: input.SuccessURL,
 		CancelURL:  input.CancelURL,
 	})
@@ -117,21 +148,23 @@ func (uc *SubscribeUseCase) Execute(ctx context.Context, input SubscribeInput) (
 		return nil, plansdomain.FailedToCreateCheckout()
 	}
 
-	// 6. Create local subscription record with incomplete status
+	// 5. Persist local subscription record
 	subscription := &plansdomain.Subscription{
-		UserID:           input.UserID,
-		PlanID:           plan.ID,
-		Status:           plansdomain.StatusIncomplete,
-		StripeCustomerID: &customerID,
+		UserID:            input.UserID,
+		PlanID:            plan.ID,
+		Status:            plansdomain.StatusIncomplete,
+		GatewayCustomerID: &customerID,
+		GatewayName:       uc.gatewayName,
 	}
-
 	if _, err := uc.subRepo.Add(ctx, subscription); err != nil {
 		log.Error("failed to create subscription record", "error", err.Error())
 		observability.RecordError(span, err)
 		return nil, plansdomain.FailedToCreateSubscription()
 	}
 
-	log.Info("checkout session created", "sessionId", result.SessionID, "subscriptionId", subscription.ID)
+	log.Info("checkout session created",
+		"sessionId", result.SessionID,
+		"subscriptionId", subscription.ID)
 
 	return &SubscribeOutput{
 		SessionID:  result.SessionID,
