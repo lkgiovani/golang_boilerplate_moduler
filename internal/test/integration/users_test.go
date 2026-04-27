@@ -95,7 +95,9 @@ func TestGetUser_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	var created struct{ ID uint `json:"id"` }
+	var created struct {
+		ID uint `json:"id"`
+	}
 	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}

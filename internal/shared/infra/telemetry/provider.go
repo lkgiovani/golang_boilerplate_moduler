@@ -24,7 +24,7 @@ type ShutdownFunc func(ctx context.Context) error
 
 func SetupOTel(cfg *config.Config) (ShutdownFunc, error) {
 	if cfg.Otel.Endpoint == "" {
-		
+
 		return func(_ context.Context) error { return nil }, nil
 	}
 

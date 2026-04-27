@@ -15,8 +15,9 @@ import (
 // derived from the errs.Code. Unknown errors are recorded as EINTERNAL/500.
 //
 // Attributes set:
-//   http.response.status_code — from errs.HTTPStatus(code)
-//   error.type                 — the lowercase string value of the code
+//
+//	http.response.status_code — from errs.HTTPStatus(code)
+//	error.type                 — the lowercase string value of the code
 //
 // This function is the single integration point between domain errors
 // and OTel. It intentionally does NOT read Metadata (T-8-02) and does NOT

@@ -41,7 +41,7 @@ func TestReadyz_DatabaseHealthy(t *testing.T) {
 	}
 
 	var body struct {
-		Status     string            `json:"status"`
+		Status     string `json:"status"`
 		Components map[string]struct {
 			Status string `json:"status"`
 		} `json:"components"`

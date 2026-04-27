@@ -7,8 +7,8 @@ import (
 	"golang_boilerplate_module/internal/config"
 	"golang_boilerplate_module/internal/shared/domain/providers"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/redis/go-redis/extra/redisotel/v9"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
 
