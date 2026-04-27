@@ -14,7 +14,7 @@ func TestPlanCRUD_AdminCreatesPlan(t *testing.T) {
 
 	token := createAdminToken(t)
 
-	body := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{"api_access":true,"export":true},"stripe_price_id":"price_test_123"}`
+	body := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{"api_access":true,"export":true},"gateway_price_id":"price_test_123"}`
 	req, _ := http.NewRequest(http.MethodPost, "/api/plans", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -258,8 +258,8 @@ func TestSubscription_Checkout(t *testing.T) {
 
 	adminToken := createAdminToken(t)
 
-	// Create a plan with stripe_price_id
-	planBody := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{"api_access":true},"stripe_price_id":"price_test_123"}`
+	// Create a plan with gateway_price_id
+	planBody := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{"api_access":true},"gateway_price_id":"price_test_123"}`
 	createReq, _ := http.NewRequest(http.MethodPost, "/api/plans", bytes.NewBufferString(planBody))
 	createReq.Header.Set("Content-Type", "application/json")
 	createReq.Header.Set("Authorization", "Bearer "+adminToken)
@@ -306,7 +306,7 @@ func TestSubscription_GetMe(t *testing.T) {
 	adminToken := createAdminToken(t)
 
 	// Create a plan
-	planBody := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{},"stripe_price_id":"price_test_123"}`
+	planBody := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{},"gateway_price_id":"price_test_123"}`
 	createReq, _ := http.NewRequest(http.MethodPost, "/api/plans", bytes.NewBufferString(planBody))
 	createReq.Header.Set("Content-Type", "application/json")
 	createReq.Header.Set("Authorization", "Bearer "+adminToken)
@@ -378,7 +378,7 @@ func TestSubscription_Cancel(t *testing.T) {
 	adminToken := createAdminToken(t)
 
 	// Create a plan
-	planBody := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{},"stripe_price_id":"price_test_123"}`
+	planBody := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{},"gateway_price_id":"price_test_123"}`
 	createReq, _ := http.NewRequest(http.MethodPost, "/api/plans", bytes.NewBufferString(planBody))
 	createReq.Header.Set("Content-Type", "application/json")
 	createReq.Header.Set("Authorization", "Bearer "+adminToken)
@@ -402,7 +402,7 @@ func TestSubscription_Cancel(t *testing.T) {
 	}
 	defer db.Close()
 
-	if _, err := db.Exec("UPDATE subscriptions SET status = 'active', stripe_subscription_id = 'sub_mock_cancel' WHERE user_id = $1", userID); err != nil {
+	if _, err := db.Exec("UPDATE subscriptions SET status = 'active', gateway_subscription_id = 'sub_mock_cancel' WHERE user_id = $1", userID); err != nil {
 		t.Fatalf("update subscription: %v", err)
 	}
 
@@ -429,5 +429,68 @@ func TestSubscription_Cancel(t *testing.T) {
 	}
 	if status != "canceled" {
 		t.Fatalf("expected status=canceled, got %s", status)
+	}
+}
+
+// TestSubscribe_ReusesGatewayCustomer (D-09) verifies that a second subscribe
+// call on the same user (after the first was canceled) does NOT trigger a
+// second gateway.CreateCustomer — the stored User.GatewayCustomerID is reused.
+func TestSubscribe_ReusesGatewayCustomer(t *testing.T) {
+	t.Cleanup(func() { truncatePlans(t); truncateUsers(t) })
+	resetMockGateway(t)
+
+	adminToken := createAdminToken(t)
+
+	planBody := `{"name":"Pro","slug":"pro","price_cents":2990,"currency":"BRL","billing_interval":"monthly","features":{},"gateway_price_id":"price_test_123"}`
+	createReq, _ := http.NewRequest(http.MethodPost, "/api/plans", bytes.NewBufferString(planBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createResp, _ := request(createReq)
+	createResp.Body.Close()
+
+	userToken, userID := createUserToken(t, "reuse@example.com")
+
+	// First subscribe — should call CreateCustomer.
+	subBody := `{"plan_slug":"pro","success_url":"http://localhost/success","cancel_url":"http://localhost/cancel"}`
+	subReq1, _ := http.NewRequest(http.MethodPost, "/api/subscriptions/checkout", bytes.NewBufferString(subBody))
+	subReq1.Header.Set("Content-Type", "application/json")
+	subReq1.Header.Set("Authorization", "Bearer "+userToken)
+	subResp1, err := request(subReq1)
+	if err != nil {
+		t.Fatalf("first subscribe: %v", err)
+	}
+	subResp1.Body.Close()
+	if subResp1.StatusCode != http.StatusOK {
+		t.Fatalf("first subscribe: expected 200, got %d", subResp1.StatusCode)
+	}
+	if !mockGateway.CreateCustomerCalled {
+		t.Fatal("expected CreateCustomer to be called on first subscribe")
+	}
+	mockGateway.CreateCustomerCalled = false
+
+	// Cancel the first subscription so a new one is allowed.
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE subscriptions SET status='canceled' WHERE user_id=$1", userID); err != nil {
+		t.Fatalf("cancel sub: %v", err)
+	}
+
+	// Second subscribe — should NOT call CreateCustomer (User.GatewayCustomerID reused).
+	subReq2, _ := http.NewRequest(http.MethodPost, "/api/subscriptions/checkout", bytes.NewBufferString(subBody))
+	subReq2.Header.Set("Content-Type", "application/json")
+	subReq2.Header.Set("Authorization", "Bearer "+userToken)
+	subResp2, err := request(subReq2)
+	if err != nil {
+		t.Fatalf("second subscribe: %v", err)
+	}
+	subResp2.Body.Close()
+	if subResp2.StatusCode != http.StatusOK {
+		t.Fatalf("second subscribe: expected 200, got %d", subResp2.StatusCode)
+	}
+	if mockGateway.CreateCustomerCalled {
+		t.Error("expected CreateCustomer to be skipped on second subscribe (D-09 customer reuse)")
 	}
 }

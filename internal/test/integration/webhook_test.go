@@ -3,14 +3,16 @@ package integration
 import (
 	"bytes"
 	"database/sql"
-	"encoding/json"
-	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+
+	"golang_boilerplate_module/internal/shared/domain/providers"
 )
 
 func TestWebhook_MissingSignature(t *testing.T) {
-	body := `{"id":"evt_test","type":"checkout.session.completed","data":{"object":{}}}`
+	resetMockGateway(t)
+	body := `{"id":"evt_test","type":"checkout.session.completed"}`
 	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	// No Stripe-Signature header
@@ -27,6 +29,7 @@ func TestWebhook_MissingSignature(t *testing.T) {
 }
 
 func TestWebhook_EmptyPayload(t *testing.T) {
+	resetMockGateway(t)
 	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBufferString(""))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Stripe-Signature", "whsec_valid_test")
@@ -42,51 +45,58 @@ func TestWebhook_EmptyPayload(t *testing.T) {
 	}
 }
 
+func TestWebhook_UnknownGateway404(t *testing.T) {
+	resetMockGateway(t)
+	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/mercadopago", strings.NewReader("{}"))
+	req.Header.Set("Stripe-Signature", "whsec_valid_xyz")
+
+	resp, err := request(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
 func TestWebhook_ValidCheckoutCompleted(t *testing.T) {
 	t.Cleanup(func() { truncatePlans(t); truncateUsers(t) })
+	resetMockGateway(t)
 
-	// Create plan and user with subscription via SQL
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
 
-	// Create a user
 	var userID int64
 	err = db.QueryRow(`INSERT INTO users (name, email, password, email_verified) VALUES ('Webhook User', 'webhook@test.com', 'hashed', true) RETURNING id`).Scan(&userID)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 
-	// Create a plan
 	var planID int64
-	err = db.QueryRow(`INSERT INTO plans (name, slug, price_cents, currency, billing_interval, features, stripe_price_id) VALUES ('Pro', 'pro', 2990, 'BRL', 'monthly', '{}', 'price_test_123') RETURNING id`).Scan(&planID)
+	err = db.QueryRow(`INSERT INTO plans (name, slug, price_cents, currency, billing_interval, features, gateway_price_id, gateway_name) VALUES ('Pro', 'pro', 2990, 'BRL', 'monthly', '{}', 'price_test_123', 'stripe') RETURNING id`).Scan(&planID)
 	if err != nil {
 		t.Fatalf("create plan: %v", err)
 	}
 
-	// Create an incomplete subscription with stripe_customer_id
 	var subID int64
-	err = db.QueryRow(`INSERT INTO subscriptions (user_id, plan_id, status, stripe_customer_id) VALUES ($1, $2, 'incomplete', 'cus_mock_webhook@test.com') RETURNING id`, userID, planID).Scan(&subID)
+	err = db.QueryRow(`INSERT INTO subscriptions (user_id, plan_id, status, gateway_customer_id, gateway_name) VALUES ($1, $2, 'incomplete', 'cus_mock_webhook@test.com', 'stripe') RETURNING id`, userID, planID).Scan(&subID)
 	if err != nil {
 		t.Fatalf("create subscription: %v", err)
 	}
 
-	// Send checkout.session.completed webhook
-	event := map[string]any{
-		"id":   "evt_test_checkout_1",
-		"type": "checkout.session.completed",
-		"data": map[string]any{
-			"object": map[string]any{
-				"subscription": "sub_mock_123",
-				"customer":     "cus_mock_webhook@test.com",
-			},
-		},
+	mockGateway.ParseEventReturn = &providers.PaymentEvent{
+		Type:                   providers.PaymentEventCheckoutCompleted,
+		GatewayEventID:         "evt_test_checkout_1",
+		GatewayCustomerRef:     "cus_mock_webhook@test.com",
+		GatewaySubscriptionRef: "sub_mock_123",
 	}
-	eventBytes, _ := json.Marshal(event)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBuffer(eventBytes))
+	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBufferString(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Stripe-Signature", "whsec_valid_test")
 
@@ -97,30 +107,27 @@ func TestWebhook_ValidCheckoutCompleted(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var errBody map[string]any
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
-		t.Fatalf("expected 200, got %d, body: %v", resp.StatusCode, errBody)
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	// Verify subscription is now active with stripe_subscription_id
 	var status string
-	var stripeSubID sql.NullString
-	err = db.QueryRow("SELECT status, stripe_subscription_id FROM subscriptions WHERE id = $1", subID).Scan(&status, &stripeSubID)
+	var subRef sql.NullString
+	err = db.QueryRow("SELECT status, gateway_subscription_id FROM subscriptions WHERE id = $1", subID).Scan(&status, &subRef)
 	if err != nil {
 		t.Fatalf("query subscription: %v", err)
 	}
 	if status != "active" {
 		t.Fatalf("expected status=active, got %s", status)
 	}
-	if !stripeSubID.Valid || stripeSubID.String != "sub_mock_123" {
-		t.Fatalf("expected stripe_subscription_id=sub_mock_123, got %v", stripeSubID)
+	if !subRef.Valid || subRef.String != "sub_mock_123" {
+		t.Fatalf("expected gateway_subscription_id=sub_mock_123, got %v", subRef)
 	}
 }
 
 func TestWebhook_PaymentEventIdempotency(t *testing.T) {
 	t.Cleanup(func() { truncatePlans(t); truncateUsers(t) })
+	resetMockGateway(t)
 
-	// Create minimal data for the webhook to process
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -134,30 +141,23 @@ func TestWebhook_PaymentEventIdempotency(t *testing.T) {
 	}
 
 	var planID int64
-	err = db.QueryRow(`INSERT INTO plans (name, slug, price_cents, currency, billing_interval, features) VALUES ('Basic', 'basic', 990, 'BRL', 'monthly', '{}') RETURNING id`).Scan(&planID)
+	err = db.QueryRow(`INSERT INTO plans (name, slug, price_cents, currency, billing_interval, features, gateway_name) VALUES ('Basic', 'basic', 990, 'BRL', 'monthly', '{}', 'stripe') RETURNING id`).Scan(&planID)
 	if err != nil {
 		t.Fatalf("create plan: %v", err)
 	}
 
-	err = db.QueryRow(`INSERT INTO subscriptions (user_id, plan_id, status, stripe_customer_id) VALUES ($1, $2, 'incomplete', 'cus_mock_idempotent@test.com') RETURNING id`, userID, planID).Scan(new(int64))
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO subscriptions (user_id, plan_id, status, gateway_customer_id, gateway_name) VALUES ($1, $2, 'incomplete', 'cus_mock_idempotent@test.com', 'stripe')`, userID, planID); err != nil {
 		t.Fatalf("create subscription: %v", err)
 	}
 
-	event := map[string]any{
-		"id":   "evt_test_idempotent",
-		"type": "checkout.session.completed",
-		"data": map[string]any{
-			"object": map[string]any{
-				"subscription": "sub_mock_idempotent",
-				"customer":     "cus_mock_idempotent@test.com",
-			},
-		},
+	mockGateway.ParseEventReturn = &providers.PaymentEvent{
+		Type:                   providers.PaymentEventCheckoutCompleted,
+		GatewayEventID:         "evt_test_idempotent",
+		GatewayCustomerRef:     "cus_mock_idempotent@test.com",
+		GatewaySubscriptionRef: "sub_mock_idempotent",
 	}
-	eventBytes, _ := json.Marshal(event)
 
-	// Send first time
-	req1, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBuffer(eventBytes))
+	req1, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBufferString(`{}`))
 	req1.Header.Set("Content-Type", "application/json")
 	req1.Header.Set("Stripe-Signature", "whsec_valid_test")
 	resp1, err := request(req1)
@@ -169,8 +169,7 @@ func TestWebhook_PaymentEventIdempotency(t *testing.T) {
 		t.Fatalf("first webhook: expected 200, got %d", resp1.StatusCode)
 	}
 
-	// Send second time (same event ID)
-	req2, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBuffer(eventBytes))
+	req2, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBufferString(`{}`))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Stripe-Signature", "whsec_valid_test")
 	resp2, err := request(req2)
@@ -182,9 +181,8 @@ func TestWebhook_PaymentEventIdempotency(t *testing.T) {
 		t.Fatalf("second webhook: expected 200, got %d", resp2.StatusCode)
 	}
 
-	// Verify only one payment_event row exists
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM payment_events WHERE stripe_event_id = 'evt_test_idempotent'").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM payment_events WHERE gateway_event_id = 'evt_test_idempotent' AND gateway_name = 'stripe'").Scan(&count)
 	if err != nil {
 		t.Fatalf("count query: %v", err)
 	}
@@ -195,6 +193,7 @@ func TestWebhook_PaymentEventIdempotency(t *testing.T) {
 
 func TestWebhook_SubscriptionDeleted(t *testing.T) {
 	t.Cleanup(func() { truncatePlans(t); truncateUsers(t) })
+	resetMockGateway(t)
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -209,29 +208,24 @@ func TestWebhook_SubscriptionDeleted(t *testing.T) {
 	}
 
 	var planID int64
-	err = db.QueryRow(`INSERT INTO plans (name, slug, price_cents, currency, billing_interval, features) VALUES ('Pro', 'pro-del', 2990, 'BRL', 'monthly', '{}') RETURNING id`).Scan(&planID)
+	err = db.QueryRow(`INSERT INTO plans (name, slug, price_cents, currency, billing_interval, features, gateway_name) VALUES ('Pro', 'pro-del', 2990, 'BRL', 'monthly', '{}', 'stripe') RETURNING id`).Scan(&planID)
 	if err != nil {
 		t.Fatalf("create plan: %v", err)
 	}
 
 	var subID int64
-	err = db.QueryRow(`INSERT INTO subscriptions (user_id, plan_id, status, stripe_subscription_id) VALUES ($1, $2, 'active', 'sub_mock_del_123') RETURNING id`, userID, planID).Scan(&subID)
+	err = db.QueryRow(`INSERT INTO subscriptions (user_id, plan_id, status, gateway_subscription_id, gateway_name) VALUES ($1, $2, 'active', 'sub_mock_del_123', 'stripe') RETURNING id`, userID, planID).Scan(&subID)
 	if err != nil {
 		t.Fatalf("create subscription: %v", err)
 	}
 
-	event := map[string]any{
-		"id":   fmt.Sprintf("evt_test_sub_deleted_%d", subID),
-		"type": "customer.subscription.deleted",
-		"data": map[string]any{
-			"object": map[string]any{
-				"id": "sub_mock_del_123",
-			},
-		},
+	mockGateway.ParseEventReturn = &providers.PaymentEvent{
+		Type:                   providers.PaymentEventSubscriptionCanceled,
+		GatewayEventID:         "evt_test_sub_deleted",
+		GatewaySubscriptionRef: "sub_mock_del_123",
 	}
-	eventBytes, _ := json.Marshal(event)
 
-	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBuffer(eventBytes))
+	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBufferString(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Stripe-Signature", "whsec_valid_test")
 
@@ -242,12 +236,9 @@ func TestWebhook_SubscriptionDeleted(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var errBody map[string]any
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
-		t.Fatalf("expected 200, got %d, body: %v", resp.StatusCode, errBody)
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	// Verify subscription status changed to canceled
 	var status string
 	err = db.QueryRow("SELECT status FROM subscriptions WHERE id = $1", subID).Scan(&status)
 	if err != nil {
@@ -255,5 +246,46 @@ func TestWebhook_SubscriptionDeleted(t *testing.T) {
 	}
 	if status != "canceled" {
 		t.Fatalf("expected status=canceled, got %s", status)
+	}
+}
+
+// TestWebhook_UnknownEventTypeProcessed (D-06) verifies PaymentEventUnknown is
+// persisted with processed=true and does not return an error.
+func TestWebhook_UnknownEventTypeProcessed(t *testing.T) {
+	t.Cleanup(func() { truncatePlans(t); truncateUsers(t) })
+	resetMockGateway(t)
+
+	mockGateway.ParseEventReturn = &providers.PaymentEvent{
+		Type:           providers.PaymentEventUnknown,
+		GatewayEventID: "evt_test_unknown_42",
+	}
+
+	req, _ := http.NewRequest(http.MethodPost, "/api/webhooks/stripe", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Stripe-Signature", "whsec_valid_test")
+
+	resp, err := request(req)
+	if err != nil {
+		t.Fatalf("webhook request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for unknown event, got %d", resp.StatusCode)
+	}
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	var processed bool
+	err = db.QueryRow("SELECT processed FROM payment_events WHERE gateway_event_id = 'evt_test_unknown_42' AND gateway_name = 'stripe'").Scan(&processed)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if !processed {
+		t.Error("expected unknown event to be marked processed=true (D-06)")
 	}
 }
