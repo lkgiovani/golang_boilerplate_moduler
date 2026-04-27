@@ -8,12 +8,13 @@ import (
 )
 
 type mockUserRepo struct {
-	addFn        func(ctx context.Context, u *usersdomain.User) (*usersdomain.User, error)
-	getByIDFn    func(ctx context.Context, id int64) (*usersdomain.User, error)
-	getByEmailFn func(ctx context.Context, email string) (*usersdomain.User, error)
-	updateFn     func(ctx context.Context, id int64, updates map[string]any) (*usersdomain.User, error)
-	deleteFn     func(ctx context.Context, id int64) error
-	deleteAllFn  func(ctx context.Context) error
+	addFn                   func(ctx context.Context, u *usersdomain.User) (*usersdomain.User, error)
+	getByIDFn               func(ctx context.Context, id int64) (*usersdomain.User, error)
+	getByEmailFn            func(ctx context.Context, email string) (*usersdomain.User, error)
+	updateFn                func(ctx context.Context, id int64, updates map[string]any) (*usersdomain.User, error)
+	deleteFn                func(ctx context.Context, id int64) error
+	deleteAllFn             func(ctx context.Context) error
+	updateGatewayCustomerFn func(ctx context.Context, userID int64, gatewayName, gatewayCustomerID string) error
 }
 
 func (m *mockUserRepo) Add(ctx context.Context, u *usersdomain.User) (*usersdomain.User, error) {
@@ -54,6 +55,13 @@ func (m *mockUserRepo) DeleteByID(ctx context.Context, id int64) error {
 func (m *mockUserRepo) DeleteAll(ctx context.Context) error {
 	if m.deleteAllFn != nil {
 		return m.deleteAllFn(ctx)
+	}
+	return nil
+}
+
+func (m *mockUserRepo) UpdateGatewayCustomer(ctx context.Context, userID int64, gatewayName, gatewayCustomerID string) error {
+	if m.updateGatewayCustomerFn != nil {
+		return m.updateGatewayCustomerFn(ctx, userID, gatewayName, gatewayCustomerID)
 	}
 	return nil
 }

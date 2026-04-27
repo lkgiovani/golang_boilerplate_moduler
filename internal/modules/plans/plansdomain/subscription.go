@@ -19,19 +19,20 @@ const (
 
 // Subscription represents a user's subscription to a plan.
 type Subscription struct {
-	ID                   int64              `json:"id" gorm:"primarykey;autoIncrement"`
-	UserID               int64              `json:"user_id" gorm:"not null"`
-	PlanID               int64              `json:"plan_id" gorm:"not null"`
-	Status               SubscriptionStatus `json:"status" gorm:"not null;default:active;size:50"`
-	StripeSubscriptionID *string            `json:"stripe_subscription_id,omitempty" gorm:"size:255"`
-	StripeCustomerID     *string            `json:"stripe_customer_id,omitempty" gorm:"size:255"`
-	CurrentPeriodStart   *time.Time         `json:"current_period_start,omitempty"`
-	CurrentPeriodEnd     *time.Time         `json:"current_period_end,omitempty"`
-	CancelAtPeriodEnd    bool               `json:"cancel_at_period_end" gorm:"not null;default:false"`
-	CanceledAt           *time.Time         `json:"canceled_at,omitempty"`
-	TrialEnd             *time.Time         `json:"trial_end,omitempty"`
-	CreatedAt            time.Time          `json:"created_at" gorm:"not null"`
-	UpdatedAt            sql.NullTime       `json:"updated_at"`
+	ID                    int64              `json:"id" gorm:"primarykey;autoIncrement"`
+	UserID                int64              `json:"user_id" gorm:"not null"`
+	PlanID                int64              `json:"plan_id" gorm:"not null"`
+	Status                SubscriptionStatus `json:"status" gorm:"not null;default:active;size:50"`
+	GatewaySubscriptionID *string            `json:"gateway_subscription_id,omitempty" gorm:"size:255"`
+	GatewayCustomerID     *string            `json:"gateway_customer_id,omitempty" gorm:"size:255"`
+	GatewayName           string             `json:"gateway_name" gorm:"not null;default:stripe;size:32"`
+	CurrentPeriodStart    *time.Time         `json:"current_period_start,omitempty"`
+	CurrentPeriodEnd      *time.Time         `json:"current_period_end,omitempty"`
+	CancelAtPeriodEnd     bool               `json:"cancel_at_period_end" gorm:"not null;default:false"`
+	CanceledAt            *time.Time         `json:"canceled_at,omitempty"`
+	TrialEnd              *time.Time         `json:"trial_end,omitempty"`
+	CreatedAt             time.Time          `json:"created_at" gorm:"not null"`
+	UpdatedAt             sql.NullTime       `json:"updated_at"`
 
 	// Plan relationship for preloading
 	Plan *Plan `json:"plan,omitempty" gorm:"foreignKey:PlanID"`

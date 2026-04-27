@@ -22,7 +22,7 @@ type UpdatePlanInput struct {
 	Features        *json.RawMessage `json:"features,omitempty"`
 	Active          *bool            `json:"active,omitempty"`
 	SortOrder       *int             `json:"sort_order,omitempty"`
-	StripePriceID   *string          `json:"stripe_price_id,omitempty"`
+	GatewayPriceID  *string          `json:"gateway_price_id,omitempty"`
 }
 
 // UpdatePlanUseCase handles updating an existing subscription plan.
@@ -77,8 +77,8 @@ func (uc *UpdatePlanUseCase) Execute(ctx context.Context, planID int64, input Up
 	if input.SortOrder != nil {
 		updates["sort_order"] = *input.SortOrder
 	}
-	if input.StripePriceID != nil {
-		updates["stripe_price_id"] = *input.StripePriceID
+	if input.GatewayPriceID != nil {
+		updates["gateway_price_id"] = *input.GatewayPriceID
 	}
 
 	updated, err := uc.planRepo.UpdateByID(ctx, planID, updates)

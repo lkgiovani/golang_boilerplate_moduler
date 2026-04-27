@@ -10,7 +10,7 @@ import (
 // PaymentEventRepository defines the contract for payment event data access.
 type PaymentEventRepository interface {
 	sharedrepo.GenericRepository[plansdomain.PaymentEvent, int64]
-	GetByStripeEventID(ctx context.Context, stripeEventID string) (*plansdomain.PaymentEvent, error)
+	GetByGatewayEventID(ctx context.Context, gatewayName, gatewayEventID string) (*plansdomain.PaymentEvent, error)
 	MarkProcessed(ctx context.Context, id int64) error
 	MarkFailed(ctx context.Context, id int64, errMsg string) error
 }

@@ -8,7 +8,8 @@ import (
 // PaymentEvent represents a payment gateway event log entry for idempotency.
 type PaymentEvent struct {
 	ID             int64           `json:"id" gorm:"primarykey;autoIncrement"`
-	StripeEventID  string          `json:"stripe_event_id" gorm:"uniqueIndex;not null;size:255"`
+	GatewayEventID string          `json:"gateway_event_id" gorm:"not null;size:255"`
+	GatewayName    string          `json:"gateway_name" gorm:"not null;default:stripe;size:32"`
 	EventType      string          `json:"event_type" gorm:"not null;size:100"`
 	SubscriptionID *int64          `json:"subscription_id,omitempty"`
 	UserID         *int64          `json:"user_id,omitempty"`

@@ -35,15 +35,20 @@ func wrapPaymentEventInternal(err error, op string) *errs.Error {
 	return e
 }
 
-// GetByStripeEventID retrieves a payment event by its Stripe event ID.
-func (r *GORMPaymentEventRepository) GetByStripeEventID(ctx context.Context, stripeEventID string) (*plansdomain.PaymentEvent, error) {
-	ctx, span := dbTracer.Start(ctx, "GORMPaymentEventRepository.GetByStripeEventID")
+// GetByGatewayEventID retrieves a payment event scoped by gateway name + event id.
+func (r *GORMPaymentEventRepository) GetByGatewayEventID(ctx context.Context, gatewayName, gatewayEventID string) (*plansdomain.PaymentEvent, error) {
+	ctx, span := dbTracer.Start(ctx, "GORMPaymentEventRepository.GetByGatewayEventID")
 	defer span.End()
 
-	span.SetAttributes(attribute.String("db.operation", "GetByStripeEventID"))
+	span.SetAttributes(
+		attribute.String("db.operation", "GetByGatewayEventID"),
+		attribute.String("gateway.name", gatewayName),
+	)
 
 	var event plansdomain.PaymentEvent
-	err := r.db.WithContext(ctx).Where("stripe_event_id = ?", stripeEventID).First(&event).Error
+	err := r.db.WithContext(ctx).
+		Where("gateway_name = ? AND gateway_event_id = ?", gatewayName, gatewayEventID).
+		First(&event).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
 		return nil, plansdomain.PaymentEventNotFound()
@@ -51,7 +56,7 @@ func (r *GORMPaymentEventRepository) GetByStripeEventID(ctx context.Context, str
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, wrapPaymentEventInternal(err, "GetByStripeEventID")
+		return nil, wrapPaymentEventInternal(err, "GetByGatewayEventID")
 	}
 
 	span.SetAttributes(attribute.Int64("payment_event.id", event.ID))

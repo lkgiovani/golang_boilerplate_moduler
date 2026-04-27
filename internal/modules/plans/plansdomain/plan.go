@@ -18,7 +18,8 @@ type Plan struct {
 	Features        json.RawMessage `json:"features" gorm:"type:jsonb;not null;default:'{}'"`
 	Active          bool            `json:"active" gorm:"not null;default:true"`
 	SortOrder       int             `json:"sort_order" gorm:"not null;default:0"`
-	StripePriceID   *string         `json:"stripe_price_id,omitempty" gorm:"size:255"`
+	GatewayPriceID  *string         `json:"gateway_price_id,omitempty" gorm:"size:255"`
+	GatewayName     string          `json:"gateway_name" gorm:"not null;default:stripe;size:32"`
 	CreatedAt       time.Time       `json:"created_at" gorm:"not null"`
 	UpdatedAt       sql.NullTime    `json:"updated_at"`
 }

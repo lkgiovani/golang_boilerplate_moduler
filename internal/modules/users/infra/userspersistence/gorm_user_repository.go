@@ -52,3 +52,30 @@ func (r *GORMUserRepository) GetByEmail(ctx context.Context, email string) (*use
 	span.SetAttributes(attribute.Int64("user.id", user.ID))
 	return &user, nil
 }
+
+func (r *GORMUserRepository) UpdateGatewayCustomer(ctx context.Context, userID int64, gatewayName, gatewayCustomerID string) error {
+	ctx, span := dbTracer.Start(ctx, "GORMUserRepository.UpdateGatewayCustomer")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.operation", "UpdateGatewayCustomer"),
+		attribute.String("gateway.name", gatewayName),
+		attribute.Int64("user.id", userID),
+	)
+
+	err := r.db.WithContext(ctx).
+		Model(&usersdomain.User{}).
+		Where("id = ?", userID).
+		Updates(map[string]any{
+			"gateway_name":        gatewayName,
+			"gateway_customer_id": gatewayCustomerID,
+		}).Error
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+		wrapped := errs.Wrap(errs.EINTERNAL, err, "users_repository.UpdateGatewayCustomer failed")
+		wrapped.Reportable = true
+		return wrapped
+	}
+	return nil
+}

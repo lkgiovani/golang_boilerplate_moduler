@@ -60,15 +60,20 @@ func (r *GORMSubscriptionRepository) GetActiveByUserID(ctx context.Context, user
 	return &sub, nil
 }
 
-// GetByStripeSubscriptionID retrieves a subscription by its Stripe subscription ID.
-func (r *GORMSubscriptionRepository) GetByStripeSubscriptionID(ctx context.Context, stripeSubID string) (*plansdomain.Subscription, error) {
-	ctx, span := dbTracer.Start(ctx, "GORMSubscriptionRepository.GetByStripeSubscriptionID")
+// GetByGatewaySubscriptionID retrieves a subscription by its gateway subscription ID.
+func (r *GORMSubscriptionRepository) GetByGatewaySubscriptionID(ctx context.Context, gatewayName, gatewaySubID string) (*plansdomain.Subscription, error) {
+	ctx, span := dbTracer.Start(ctx, "GORMSubscriptionRepository.GetByGatewaySubscriptionID")
 	defer span.End()
 
-	span.SetAttributes(attribute.String("db.operation", "GetByStripeSubscriptionID"))
+	span.SetAttributes(
+		attribute.String("db.operation", "GetByGatewaySubscriptionID"),
+		attribute.String("gateway.name", gatewayName),
+	)
 
 	var sub plansdomain.Subscription
-	err := r.db.WithContext(ctx).Where("stripe_subscription_id = ?", stripeSubID).First(&sub).Error
+	err := r.db.WithContext(ctx).
+		Where("gateway_name = ? AND gateway_subscription_id = ?", gatewayName, gatewaySubID).
+		First(&sub).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		span.SetStatus(codes.Error, "not found")
 		return nil, plansdomain.SubscriptionNotFound()
@@ -76,23 +81,26 @@ func (r *GORMSubscriptionRepository) GetByStripeSubscriptionID(ctx context.Conte
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, wrapSubscriptionInternal(err, "GetByStripeSubscriptionID")
+		return nil, wrapSubscriptionInternal(err, "GetByGatewaySubscriptionID")
 	}
 
 	span.SetAttributes(attribute.Int64("subscription.id", sub.ID))
 	return &sub, nil
 }
 
-// GetByStripeCustomerID retrieves a subscription by Stripe customer ID.
-func (r *GORMSubscriptionRepository) GetByStripeCustomerID(ctx context.Context, stripeCustID string) (*plansdomain.Subscription, error) {
-	ctx, span := dbTracer.Start(ctx, "GORMSubscriptionRepository.GetByStripeCustomerID")
+// GetByGatewayCustomerID retrieves a subscription by gateway customer ID (scoped by gateway).
+func (r *GORMSubscriptionRepository) GetByGatewayCustomerID(ctx context.Context, gatewayName, gatewayCustID string) (*plansdomain.Subscription, error) {
+	ctx, span := dbTracer.Start(ctx, "GORMSubscriptionRepository.GetByGatewayCustomerID")
 	defer span.End()
 
-	span.SetAttributes(attribute.String("db.operation", "GetByStripeCustomerID"))
+	span.SetAttributes(
+		attribute.String("db.operation", "GetByGatewayCustomerID"),
+		attribute.String("gateway.name", gatewayName),
+	)
 
 	var sub plansdomain.Subscription
 	err := r.db.WithContext(ctx).
-		Where("stripe_customer_id = ? AND status IN ?", stripeCustID, []string{
+		Where("gateway_name = ? AND gateway_customer_id = ? AND status IN ?", gatewayName, gatewayCustID, []string{
 			string(plansdomain.StatusActive),
 			string(plansdomain.StatusTrialing),
 			string(plansdomain.StatusPastDue),
@@ -106,7 +114,7 @@ func (r *GORMSubscriptionRepository) GetByStripeCustomerID(ctx context.Context, 
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
-		return nil, wrapSubscriptionInternal(err, "GetByStripeCustomerID")
+		return nil, wrapSubscriptionInternal(err, "GetByGatewayCustomerID")
 	}
 
 	span.SetAttributes(attribute.Int64("subscription.id", sub.ID))

@@ -25,7 +25,7 @@ type CreatePlanInput struct {
 	BillingInterval string          `json:"billing_interval"`
 	Features        json.RawMessage `json:"features,omitempty"`
 	SortOrder       int             `json:"sort_order"`
-	StripePriceID   *string         `json:"stripe_price_id,omitempty"`
+	GatewayPriceID  *string         `json:"gateway_price_id,omitempty"`
 }
 
 // CreatePlanUseCase handles the creation of a new subscription plan.
@@ -98,7 +98,7 @@ func (uc *CreatePlanUseCase) Execute(ctx context.Context, input CreatePlanInput)
 		Features:        features,
 		Active:          true,
 		SortOrder:       input.SortOrder,
-		StripePriceID:   input.StripePriceID,
+		GatewayPriceID:  input.GatewayPriceID,
 	}
 
 	created, err := uc.planRepo.Add(ctx, plan)

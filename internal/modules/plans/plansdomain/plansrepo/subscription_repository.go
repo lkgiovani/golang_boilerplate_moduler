@@ -11,6 +11,6 @@ import (
 type SubscriptionRepository interface {
 	sharedrepo.GenericRepository[plansdomain.Subscription, int64]
 	GetActiveByUserID(ctx context.Context, userID int64) (*plansdomain.Subscription, error)
-	GetByStripeSubscriptionID(ctx context.Context, stripeSubID string) (*plansdomain.Subscription, error)
-	GetByStripeCustomerID(ctx context.Context, stripeCustID string) (*plansdomain.Subscription, error)
+	GetByGatewaySubscriptionID(ctx context.Context, gatewayName, gatewaySubID string) (*plansdomain.Subscription, error)
+	GetByGatewayCustomerID(ctx context.Context, gatewayName, gatewayCustID string) (*plansdomain.Subscription, error)
 }
