@@ -33,16 +33,16 @@ func AlreadySubscribed() *errs.Error {
 	return errs.Errorf(errs.EBADREQUEST, "user already has an active subscription")
 }
 
-func MissingStripePrice() *errs.Error {
-	return errs.Errorf(errs.EBADREQUEST, "plan has no Stripe price configured")
+func MissingGatewayPrice() *errs.Error {
+	return errs.Errorf(errs.EBADREQUEST, "plan has no gateway price configured")
 }
 
 func EmptyWebhookPayload() *errs.Error {
 	return errs.Errorf(errs.EBADREQUEST, "empty webhook payload")
 }
 
-func MissingStripeSignature() *errs.Error {
-	return errs.Errorf(errs.EBADREQUEST, "missing Stripe-Signature header")
+func MissingWebhookSignature() *errs.Error {
+	return errs.Errorf(errs.EBADREQUEST, "missing webhook signature header")
 }
 
 func InvalidWebhookSignature() *errs.Error {
@@ -51,6 +51,10 @@ func InvalidWebhookSignature() *errs.Error {
 
 func InvalidWebhookPayload() *errs.Error {
 	return errs.Errorf(errs.EBADREQUEST, "invalid webhook payload")
+}
+
+func InvalidGatewayEvent() *errs.Error {
+	return errs.Errorf(errs.EBADREQUEST, "invalid gateway event payload")
 }
 
 // Auth
@@ -71,6 +75,10 @@ func ActiveSubscriptionRequired() *errs.Error {
 
 func FeatureNotInPlan(feature string) *errs.Error {
 	return errs.Errorf(errs.EFORBIDDEN, "plan does not include feature: %s", feature)
+}
+
+func RefundNotSupported() *errs.Error {
+	return errs.Errorf(errs.EFORBIDDEN, "refund not supported for this payment")
 }
 
 // Not found
@@ -95,6 +103,14 @@ func PaymentEventNotFound() *errs.Error {
 	return errs.Errorf(errs.ENOTFOUND, "Payment event not found")
 }
 
+func GatewayNotRegistered(name string) *errs.Error {
+	return errs.Errorf(errs.ENOTFOUND, "payment gateway %q not registered", name)
+}
+
+func CustomerNotFoundInGateway() *errs.Error {
+	return errs.Errorf(errs.ENOTFOUND, "customer not found in payment gateway")
+}
+
 // Internal (reportable)
 
 func FailedToLoadPlan() *errs.Error {
@@ -111,4 +127,20 @@ func FailedToCreateCheckout() *errs.Error {
 
 func FailedToCreateSubscription() *errs.Error {
 	return reportable(errs.Errorf(errs.EINTERNAL, "failed to create subscription record"))
+}
+
+func FailedToUpdatePaymentMethod() *errs.Error {
+	return reportable(errs.Errorf(errs.EINTERNAL, "failed to update payment method"))
+}
+
+func FailedToCreatePortalSession() *errs.Error {
+	return reportable(errs.Errorf(errs.EINTERNAL, "failed to create billing portal session"))
+}
+
+func FailedToRefundPayment() *errs.Error {
+	return reportable(errs.Errorf(errs.EINTERNAL, "failed to refund payment"))
+}
+
+func FailedToFetchSubscriptionStatus() *errs.Error {
+	return reportable(errs.Errorf(errs.EINTERNAL, "failed to fetch subscription status from gateway"))
 }

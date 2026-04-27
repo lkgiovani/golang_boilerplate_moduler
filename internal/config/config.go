@@ -54,15 +54,20 @@ type StripeConfig struct {
 	WebhookSecret string
 }
 
+type PaymentGatewayConfig struct {
+	Name string // "stripe" (default) | future: "mercadopago" | "asaas"
+}
+
 type Config struct {
-	App      AppConfig
-	Database DatabaseConfig
-	Logger   LoggerConfig
-	Otel     OtelConfig
-	Redis    RedisConfig
-	Email    EmailConfig
-	JWT      JWTConfig
-	Stripe   StripeConfig
+	App            AppConfig
+	Database       DatabaseConfig
+	Logger         LoggerConfig
+	Otel           OtelConfig
+	Redis          RedisConfig
+	Email          EmailConfig
+	JWT            JWTConfig
+	Stripe         StripeConfig
+	PaymentGateway PaymentGatewayConfig
 }
 
 func NewConfig() (*Config, error) {
@@ -136,6 +141,9 @@ func NewConfig() (*Config, error) {
 		Stripe: StripeConfig{
 			SecretKey:     getEnvOrDefault("STRIPE_SECRET_KEY", ""),
 			WebhookSecret: getEnvOrDefault("STRIPE_WEBHOOK_SECRET", ""),
+		},
+		PaymentGateway: PaymentGatewayConfig{
+			Name: getEnvOrDefault("PAYMENT_GATEWAY", "stripe"),
 		},
 	}, nil
 }
